@@ -5,9 +5,9 @@ import json
 import re
 import os
 
-OPENROUTER_API_KEY = "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"
-GOOGLE_API_KEY = "AIzaSyAzMv-Lyt224G3kkg-9oQ4Fc3XZ8kkZLdE"
-GOOGLE_CX = "b1e900c268fe045bd"
+OPENROUTER_API_KEY = "ключи в закрытом репозитории @BingMaker03"
+GOOGLE_API_KEY = ""
+GOOGLE_CX = ""
 app = Flask(__name__)
 
 
