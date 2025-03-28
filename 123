@@ -1,0 +1,26 @@
+function markedCount(dataRuchej, tableinf) {
+  const counts = {};
+
+  // Подсчитываем количество объектов с каждым id в dataRuchej
+  for (let i = 0; i < dataRuchej.length; i++) {
+    if (i >= 100) {
+      break;
+    } else if (i < 100) {
+      const id = dataRuchej[i].id;
+      counts[id] = (counts[id] || 0) + 1;
+    }
+  }
+
+  // Обновляем объекты в tableinf по соответствующим id
+  for (let i = 0; i < tableinf.length; i++) {
+    if (i >= 100) {
+      break;
+    } else if (i < 100) {
+      const id = tableinf[i].id;
+      tableinf[i].marked = counts[id] || 0;
+    }
+  }
+
+  // Передаем обновленный tableinf на сервер
+  updateDataOnServer(tableinf);
+}
