@@ -1,5 +1,5 @@
 function markedCount(dataRuchej, tableinf) {
-  console.log("=== Начало markedCount (массив объектов) ===");
+  console.log("=== Начало markedCount (массив объектов типа Order) ===");
 
   // 1. Подсчитываем количество объектов с каждым id (не более 100 итераций)
   const counts = {};
@@ -28,28 +28,32 @@ function markedCount(dataRuchej, tableinf) {
       break;
     }
 
-    const currentId = tableinf[i].id;
+    // Предполагаем, что tableinf[i] — это уже объект Order
+    const currentOrder = tableinf[i];
+    const currentId = currentOrder.id;
+
     if (currentId === "p_new") {
       console.log(`tableinf[${i}]: id=p_new — пропускаем обновление (не меняем marked).`);
       continue;
     }
 
     if (counts.hasOwnProperty(currentId)) {
-      // Если есть в counts, ставим соответствующее значение
-      tableinf[i].marked = counts[currentId];
+      currentOrder.marked = counts[currentId];
+      // При необходимости сразу пересчитываем remaining
+      currentOrder.remaining = currentOrder.need - currentOrder.cut - currentOrder.marked;
       console.log(
-        `tableinf[${i}]: id=${currentId} — поле marked обновлено: ${tableinf[i].marked}`
+        `tableinf[${i}]: id=${currentId} — поле marked обновлено: ${currentOrder.marked}`
       );
     } else {
-      // Иначе ставим 0
-      tableinf[i].marked = 0;
+      currentOrder.marked = 0;
+      currentOrder.remaining = currentOrder.need - currentOrder.cut - currentOrder.marked;
       console.log(
         `tableinf[${i}]: id=${currentId} — отсутствует в counts, поле marked установлено в 0`
       );
     }
   }
 
-  console.log("Итоговое состояние tableinf (массив объектов):", tableinf);
+  console.log("Итоговое состояние tableinf:", tableinf);
 
   // 3. Передаём полный обновленный tableinf на сервер
   console.log("Передача обновленного tableinf на сервер...");
