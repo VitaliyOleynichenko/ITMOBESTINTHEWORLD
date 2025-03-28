@@ -1,55 +1,70 @@
 function markedCount(dataRuchej, tableinf) {
-  console.log("=== Начало выполнения функции markedCount ===");
+  console.log("=== Начало markedCount ===");
 
-  // 1. Подсчитываем количество объектов с каждым id в dataRuchej
+  // 1. Подсчёт количества вхождений каждого id в dataRuchej (не более 100 итераций)
   const counts = {};
-  console.log("Начинаем подсчет количества объектов в dataRuchej...");
+  console.log("Подсчёт количества объектов по id в dataRuchej...");
 
   for (let i = 0; i < dataRuchej.length; i++) {
     if (i >= 100) {
       console.log(`Прерывание цикла dataRuchej: достигнуто 100 итераций (итерация ${i}).`);
       break;
-    } else if (i < 100) {
-      const currentId = dataRuchej[i].id;
-      counts[currentId] = (counts[currentId] || 0) + 1;
-      console.log(`dataRuchej[${i}]: id = ${currentId}, текущее количество = ${counts[currentId]}`);
     }
+    const currentId = dataRuchej[i].id;
+    counts[currentId] = (counts[currentId] || 0) + 1;
+    console.log(
+      `dataRuchej[${i}]: id=${currentId}, текущее количество для этого id = ${counts[currentId]}`
+    );
   }
-  console.log("Подсчет завершен. Результирующий объект counts:", counts);
+  console.log("Подсчёт завершён, итоговый объект counts:", counts);
 
-  // 2. Обновляем tableinf ТОЛЬКО по тем id, что есть в counts, и собираем массив обновленных объектов
-  console.log("Начинаем обновление объектов в tableinf...");
-  const updates = []; // сюда сложим только те объекты, которые действительно обновились
+  // 2. Преобразуем tableinf (массив массивов) в массив объектов и выставляем поле marked
+  console.log("Преобразование tableinf в массив объектов...");
+  const result = [];
 
   for (let i = 0; i < tableinf.length; i++) {
     if (i >= 100) {
       console.log(`Прерывание цикла tableinf: достигнуто 100 итераций (итерация ${i}).`);
       break;
-    } else if (i < 100) {
-      const currentId = tableinf[i].id;
-      // Проверяем, есть ли этот id в counts
-      if (counts.hasOwnProperty(currentId)) {
-        // Обновляем поле marked
-        tableinf[i].marked = counts[currentId];
-        // Добавляем объект в массив updates, чтобы отправить только его
-        updates.push(tableinf[i]);
-        console.log(
-          `tableinf[${i}]: id = ${currentId}, поле marked = ${tableinf[i].marked} (добавлено в updates).`
-        );
-      } else {
-        console.log(
-          `tableinf[${i}]: id = ${currentId} отсутствует в counts, пропускаем обновление.`
-        );
-      }
     }
+
+    // Предположим, что tableinf[i] — это массив вида:
+    // [ id, numberTask, order, markSteel, orderLenght, kratCount, queue, hotLength, kratLength, numberPlav, ... ]
+    // Индексы нужно подстроить под вашу реальную структуру!
+    const row = tableinf[i];
+
+    // Создаём объект, который ожидает updateDataOnServer
+    const obj = {
+      id: row[0],
+      numberTask: row[1],
+      order: row[2],
+      markSteel: row[3],
+      orderLenght: row[4],
+      kratCount: row[5],
+      queue: row[6],
+      hotLength: row[7],
+      kratLength: row[8],
+      numberPlav: row[9]
+      // Если у вас есть дополнительные поля в row[10], row[11], и т.д.,
+      // вы можете тоже добавить их в объект (либо игнорировать).
+    };
+
+    // 3. Устанавливаем marked, если counts[obj.id] существует
+    const currentId = obj.id;
+    obj.marked = counts[currentId] || 0;
+
+    console.log(`tableinf[${i}]: id=${currentId}, поле marked = ${obj.marked}`);
+
+    // Добавляем этот объект в итоговый массив
+    result.push(obj);
   }
-  console.log("Обновление tableinf завершено. Массив объектов для передачи на сервер:", updates);
 
-  // 3. Передаем ТОЛЬКО обновленные объекты на сервер
-  //    Теперь это массив (updates), а не объект, поэтому .map(...) в updateDataOnServer будет работать корректно
-  console.log("Передача обновленных данных на сервер...");
-  updateDataOnServer(updates);
-  console.log("Данные успешно переданы на сервер.");
+  console.log("Преобразование завершено. Массив объектов для передачи на сервер:", result);
 
-  console.log("=== Завершение выполнения функции markedCount ===");
+  // 4. Передаём полученный массив объектов в updateDataOnServer
+  //    Теперь updatedData внутри updateDataOnServer будет именно МАССИВОМ объектов,
+  //    и строка const originalData = updatedData.map(...) не вызовет ошибку
+  console.log("Вызов updateDataOnServer(result)...");
+  updateDataOnServer(result);
+  console.log("=== Завершение markedCount ===");
 }
