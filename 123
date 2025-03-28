@@ -1,14 +1,12 @@
 function markedCount(dataRuchej, tableinf) {
-  console.log("Начало выполнения функции markedCount");
-  
-  // Создаем объект для хранения подсчитанных значений
-  const counts = {};
-  console.log("Начинаем подсчет количества по id в dataRuchej");
+  console.log("=== Начало выполнения функции markedCount ===");
 
-  // Подсчет количества объектов с каждым id, ограничение до 100 итераций
+  // Подсчитываем количество встреч для каждого id из dataRuchej (ограничение до 100 итераций)
+  const counts = {};
+  console.log("Начинаем подсчет количества объектов по id в dataRuchej");
   for (let i = 0; i < dataRuchej.length; i++) {
     if (i >= 100) {
-      console.log(`Достигнуто 100 итераций в цикле dataRuchej. Прерывание цикла на итерации ${i}.`);
+      console.log(`Прерывание цикла dataRuchej: достигнуто 100 итераций (итерация ${i}).`);
       break;
     } else if (i < 100) {
       const currentId = dataRuchej[i].id;
@@ -18,21 +16,31 @@ function markedCount(dataRuchej, tableinf) {
   }
   console.log("Подсчет завершен. Результирующий объект counts:", counts);
 
-  console.log("Начинаем обновление объектов в tableinf с использованием подсчитанных значений.");
-  // Обновление объектов в tableinf, сопоставление по id, ограничение до 100 итераций
+  // Обновляем данные в tableinf только для тех записей, id которых присутствуют в counts.
+  // Собираем объект обновлений, где ключ – id, а значение – обновленное поле marked.
+  const updates = {};
+  console.log("Начинаем обновление данных в tableinf для найденных id");
   for (let i = 0; i < tableinf.length; i++) {
     if (i >= 100) {
-      console.log(`Достигнуто 100 итераций в цикле tableinf. Прерывание цикла на итерации ${i}.`);
+      console.log(`Прерывание цикла tableinf: достигнуто 100 итераций (итерация ${i}).`);
       break;
     } else if (i < 100) {
       const currentId = tableinf[i].id;
-      tableinf[i].marked = counts[currentId] || 0;
-      console.log(`tableinf[${i}]: id = ${currentId}, поле marked установлено в ${tableinf[i].marked}`);
+      if (counts.hasOwnProperty(currentId)) {
+        tableinf[i].marked = counts[currentId];
+        updates[currentId] = counts[currentId];
+        console.log(`tableinf[${i}]: id = ${currentId} обновлен: marked = ${counts[currentId]}`);
+      } else {
+        console.log(`tableinf[${i}]: id = ${currentId} не найден в counts, поле marked не обновлено.`);
+      }
     }
   }
-  console.log("Обновление tableinf завершено. Итоговый массив tableinf:", tableinf);
+  console.log("Обновление завершено. Собранные данные для передачи на сервер:", updates);
 
-  console.log("Передача обновленных данных на сервер...");
-  updateDataOnServer(tableinf);
+  // Передаем только обновленные данные по id на сервер
+  console.log("Передача обновленных данных на сервер для указанных id...");
+  updateDataOnServer(updates);
   console.log("Данные успешно переданы на сервер.");
+
+  console.log("=== Завершение выполнения функции markedCount ===");
 }
