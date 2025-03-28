@@ -1,9 +1,10 @@
 function markedCount(dataRuchej, tableinf) {
   console.log("=== Начало выполнения функции markedCount ===");
 
-  // Подсчитываем количество встреч для каждого id из dataRuchej (ограничение до 100 итераций)
+  // 1. Подсчитываем количество объектов с каждым id в dataRuchej
   const counts = {};
-  console.log("Начинаем подсчет количества объектов по id в dataRuchej");
+  console.log("Начинаем подсчет количества объектов в dataRuchej...");
+
   for (let i = 0; i < dataRuchej.length; i++) {
     if (i >= 100) {
       console.log(`Прерывание цикла dataRuchej: достигнуто 100 итераций (итерация ${i}).`);
@@ -16,29 +17,37 @@ function markedCount(dataRuchej, tableinf) {
   }
   console.log("Подсчет завершен. Результирующий объект counts:", counts);
 
-  // Обновляем данные в tableinf только для тех записей, id которых присутствуют в counts.
-  // Собираем объект обновлений, где ключ – id, а значение – обновленное поле marked.
-  const updates = {};
-  console.log("Начинаем обновление данных в tableinf для найденных id");
+  // 2. Обновляем tableinf ТОЛЬКО по тем id, что есть в counts, и собираем массив обновленных объектов
+  console.log("Начинаем обновление объектов в tableinf...");
+  const updates = []; // сюда сложим только те объекты, которые действительно обновились
+
   for (let i = 0; i < tableinf.length; i++) {
     if (i >= 100) {
       console.log(`Прерывание цикла tableinf: достигнуто 100 итераций (итерация ${i}).`);
       break;
     } else if (i < 100) {
       const currentId = tableinf[i].id;
+      // Проверяем, есть ли этот id в counts
       if (counts.hasOwnProperty(currentId)) {
+        // Обновляем поле marked
         tableinf[i].marked = counts[currentId];
-        updates[currentId] = counts[currentId];
-        console.log(`tableinf[${i}]: id = ${currentId} обновлен: marked = ${counts[currentId]}`);
+        // Добавляем объект в массив updates, чтобы отправить только его
+        updates.push(tableinf[i]);
+        console.log(
+          `tableinf[${i}]: id = ${currentId}, поле marked = ${tableinf[i].marked} (добавлено в updates).`
+        );
       } else {
-        console.log(`tableinf[${i}]: id = ${currentId} не найден в counts, поле marked не обновлено.`);
+        console.log(
+          `tableinf[${i}]: id = ${currentId} отсутствует в counts, пропускаем обновление.`
+        );
       }
     }
   }
-  console.log("Обновление завершено. Собранные данные для передачи на сервер:", updates);
+  console.log("Обновление tableinf завершено. Массив объектов для передачи на сервер:", updates);
 
-  // Передаем только обновленные данные по id на сервер
-  console.log("Передача обновленных данных на сервер для указанных id...");
+  // 3. Передаем ТОЛЬКО обновленные объекты на сервер
+  //    Теперь это массив (updates), а не объект, поэтому .map(...) в updateDataOnServer будет работать корректно
+  console.log("Передача обновленных данных на сервер...");
   updateDataOnServer(updates);
   console.log("Данные успешно переданы на сервер.");
 
