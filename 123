@@ -1,26 +1,38 @@
 function markedCount(dataRuchej, tableinf) {
+  console.log("Начало выполнения функции markedCount");
+  
+  // Создаем объект для хранения подсчитанных значений
   const counts = {};
+  console.log("Начинаем подсчет количества по id в dataRuchej");
 
-  // Подсчитываем количество объектов с каждым id в dataRuchej
+  // Подсчет количества объектов с каждым id, ограничение до 100 итераций
   for (let i = 0; i < dataRuchej.length; i++) {
     if (i >= 100) {
+      console.log(`Достигнуто 100 итераций в цикле dataRuchej. Прерывание цикла на итерации ${i}.`);
       break;
     } else if (i < 100) {
-      const id = dataRuchej[i].id;
-      counts[id] = (counts[id] || 0) + 1;
+      const currentId = dataRuchej[i].id;
+      counts[currentId] = (counts[currentId] || 0) + 1;
+      console.log(`dataRuchej[${i}]: id = ${currentId}, текущее количество = ${counts[currentId]}`);
     }
   }
+  console.log("Подсчет завершен. Результирующий объект counts:", counts);
 
-  // Обновляем объекты в tableinf по соответствующим id
+  console.log("Начинаем обновление объектов в tableinf с использованием подсчитанных значений.");
+  // Обновление объектов в tableinf, сопоставление по id, ограничение до 100 итераций
   for (let i = 0; i < tableinf.length; i++) {
     if (i >= 100) {
+      console.log(`Достигнуто 100 итераций в цикле tableinf. Прерывание цикла на итерации ${i}.`);
       break;
     } else if (i < 100) {
-      const id = tableinf[i].id;
-      tableinf[i].marked = counts[id] || 0;
+      const currentId = tableinf[i].id;
+      tableinf[i].marked = counts[currentId] || 0;
+      console.log(`tableinf[${i}]: id = ${currentId}, поле marked установлено в ${tableinf[i].marked}`);
     }
   }
+  console.log("Обновление tableinf завершено. Итоговый массив tableinf:", tableinf);
 
-  // Передаем обновленный tableinf на сервер
+  console.log("Передача обновленных данных на сервер...");
   updateDataOnServer(tableinf);
+  console.log("Данные успешно переданы на сервер.");
 }
