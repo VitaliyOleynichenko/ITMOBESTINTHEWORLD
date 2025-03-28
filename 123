@@ -1,7 +1,7 @@
 function markedCount(dataRuchej, tableinf) {
-  console.log("=== Начало markedCount ===");
+  console.log("=== Начало markedCount (массив массивов) ===");
 
-  // 1. Подсчитываем количество объектов с каждым id в dataRuchej (ограничение до 100 итераций)
+  // 1. Считаем
   const counts = {};
   console.log("Подсчет количества объектов по id в dataRuchej...");
   for (let i = 0; i < dataRuchej.length; i++) {
@@ -15,28 +15,36 @@ function markedCount(dataRuchej, tableinf) {
   }
   console.log("Подсчет завершен, объект counts:", counts);
 
-  // 2. Обновляем поле marked в tableinf (ограничение до 100 итераций)
-  //    При этом сохраняем все существующие поля
-  console.log("Обновление поля marked в tableinf...");
+  // 2. Обновляем tableinf
+  console.log("Обновление поля marked в tableinf (array of arrays)...");
   for (let i = 0; i < tableinf.length; i++) {
     if (i >= 100) {
       console.log(`Прерывание цикла tableinf: достигнуто 100 итераций (итерация ${i}).`);
       break;
     }
-    const currentId = tableinf[i].id;
+
+    // Допустим, id лежит в [0]
+    const currentId = tableinf[i][0];
+
+    // Пропускаем, если p_new
+    if (currentId === "p_new") {
+      console.log(`tableinf[${i}]: id=p_new, пропускаем (не обновляем marked).`);
+      continue;
+    }
+
+    // Если есть в counts, пишем в tableinf[i][12], например
     if (counts.hasOwnProperty(currentId)) {
-      tableinf[i].marked = counts[currentId];
-      console.log(`tableinf[${i}]: id=${currentId} — поле marked обновлено: ${tableinf[i].marked}`);
+      tableinf[i][12] = counts[currentId];
+      console.log(`tableinf[${i}]: id=${currentId} — обновили индекс 12: ${tableinf[i][12]}`);
     } else {
-      // Если для данного id нет значений в dataRuchej, устанавливаем marked в 0
-      tableinf[i].marked = 0;
-      console.log(`tableinf[${i}]: id=${currentId} — значение отсутствует, поле marked установлено в 0`);
+      tableinf[i][12] = 0;
+      console.log(`tableinf[${i}]: id=${currentId} — нет в counts, ставим 0 в индекс 12`);
     }
   }
 
-  console.log("Обновленное tableinf:", tableinf);
+  console.log("Обновленное tableinf (array of arrays):", tableinf);
 
-  // 3. Передаем полный обновленный tableinf (с сохраненными всеми полями) на сервер
+  // 3. Передаем обновленный массив массивов на сервер
   console.log("Передача полного обновленного tableinf на сервер...");
   updateDataOnServer(tableinf);
   console.log("=== Завершение markedCount ===");
