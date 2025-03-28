@@ -1,10 +1,9 @@
 function markedCount(dataRuchej, tableinf) {
   console.log("=== Начало markedCount ===");
 
-  // 1. Подсчёт количества вхождений каждого id в dataRuchej (не более 100 итераций)
+  // 1. Подсчитываем количество объектов с каждым id в dataRuchej (ограничение до 100 итераций)
   const counts = {};
-  console.log("Подсчёт количества объектов по id в dataRuchej...");
-
+  console.log("Подсчет количества объектов по id в dataRuchej...");
   for (let i = 0; i < dataRuchej.length; i++) {
     if (i >= 100) {
       console.log(`Прерывание цикла dataRuchej: достигнуто 100 итераций (итерация ${i}).`);
@@ -12,59 +11,33 @@ function markedCount(dataRuchej, tableinf) {
     }
     const currentId = dataRuchej[i].id;
     counts[currentId] = (counts[currentId] || 0) + 1;
-    console.log(
-      `dataRuchej[${i}]: id=${currentId}, текущее количество для этого id = ${counts[currentId]}`
-    );
+    console.log(`dataRuchej[${i}]: id=${currentId}, текущее количество = ${counts[currentId]}`);
   }
-  console.log("Подсчёт завершён, итоговый объект counts:", counts);
+  console.log("Подсчет завершен, объект counts:", counts);
 
-  // 2. Преобразуем tableinf (массив массивов) в массив объектов и выставляем поле marked
-  console.log("Преобразование tableinf в массив объектов...");
-  const result = [];
-
+  // 2. Обновляем поле marked в tableinf (ограничение до 100 итераций)
+  //    При этом сохраняем все существующие поля
+  console.log("Обновление поля marked в tableinf...");
   for (let i = 0; i < tableinf.length; i++) {
     if (i >= 100) {
       console.log(`Прерывание цикла tableinf: достигнуто 100 итераций (итерация ${i}).`);
       break;
     }
-
-    // Предположим, что tableinf[i] — это массив вида:
-    // [ id, numberTask, order, markSteel, orderLenght, kratCount, queue, hotLength, kratLength, numberPlav, ... ]
-    // Индексы нужно подстроить под вашу реальную структуру!
-    const row = tableinf[i];
-
-    // Создаём объект, который ожидает updateDataOnServer
-    const obj = {
-      id: row[0],
-      numberTask: row[1],
-      order: row[2],
-      markSteel: row[3],
-      orderLenght: row[4],
-      kratCount: row[5],
-      queue: row[6],
-      hotLength: row[7],
-      kratLength: row[8],
-      numberPlav: row[9]
-      // Если у вас есть дополнительные поля в row[10], row[11], и т.д.,
-      // вы можете тоже добавить их в объект (либо игнорировать).
-    };
-
-    // 3. Устанавливаем marked, если counts[obj.id] существует
-    const currentId = obj.id;
-    obj.marked = counts[currentId] || 0;
-
-    console.log(`tableinf[${i}]: id=${currentId}, поле marked = ${obj.marked}`);
-
-    // Добавляем этот объект в итоговый массив
-    result.push(obj);
+    const currentId = tableinf[i].id;
+    if (counts.hasOwnProperty(currentId)) {
+      tableinf[i].marked = counts[currentId];
+      console.log(`tableinf[${i}]: id=${currentId} — поле marked обновлено: ${tableinf[i].marked}`);
+    } else {
+      // Если для данного id нет значений в dataRuchej, устанавливаем marked в 0
+      tableinf[i].marked = 0;
+      console.log(`tableinf[${i}]: id=${currentId} — значение отсутствует, поле marked установлено в 0`);
+    }
   }
 
-  console.log("Преобразование завершено. Массив объектов для передачи на сервер:", result);
+  console.log("Обновленное tableinf:", tableinf);
 
-  // 4. Передаём полученный массив объектов в updateDataOnServer
-  //    Теперь updatedData внутри updateDataOnServer будет именно МАССИВОМ объектов,
-  //    и строка const originalData = updatedData.map(...) не вызовет ошибку
-  console.log("Вызов updateDataOnServer(result)...");
-  updateDataOnServer(result);
+  // 3. Передаем полный обновленный tableinf (с сохраненными всеми полями) на сервер
+  console.log("Передача полного обновленного tableinf на сервер...");
+  updateDataOnServer(tableinf);
   console.log("=== Завершение markedCount ===");
 }
