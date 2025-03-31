@@ -1,1 +1,23 @@
 
+Запрос для создания таблицы T_TS_MNLZ2_TASK25:
+
+sql
+Копировать
+CREATE TABLE TS.T_TS_MNLZ2_TASK25 (
+  ID_SEQ  NUMBER       NOT NULL,
+  DATNZ   DATE         NOT NULL,
+  NNZ     NUMBER       NOT NULL,
+  OCHER   VARCHAR2(50),
+  -- другие поля, если необходимо
+  CONSTRAINT PK_T_TS_MNLZ2_TASK25 PRIMARY KEY (ID_SEQ, DATNZ, NNZ)
+);
+Запрос для создания таблицы T_TS_MNLZ2_LASTRECORD:
+
+sql
+Копировать
+CREATE TABLE TS.T_TS_MNLZ2_LASTRECORD (
+  ID_SEQ  NUMBER       NOT NULL,
+  DATNZ   DATE         NOT NULL,
+  NNZ     NUMBER       NOT NULL,
+  CONSTRAINT PK_T_TS_MNLZ2_LASTRECORD PRIMARY KEY (ID_SEQ, DATNZ, NNZ)
+);
