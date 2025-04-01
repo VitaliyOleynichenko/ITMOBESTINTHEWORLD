@@ -1,13 +1,12 @@
 Спецификация пакета
-sql
-Копировать
+
 CREATE OR REPLACE PACKAGE TS.PKG_TS_MNLZ2_TASK AS
   PROCEDURE LOAD_TASKS;
 END PKG_TS_MNLZ2_TASK;
 /
+
 Тело пакета
-sql
-Копировать
+
 CREATE OR REPLACE PACKAGE BODY TS.PKG_TS_MNLZ2_TASK AS
 
   PROCEDURE LOAD_TASKS IS
@@ -19,12 +18,12 @@ CREATE OR REPLACE PACKAGE BODY TS.PKG_TS_MNLZ2_TASK AS
     v_inserted       NUMBER := 0;    -- сколько фактически добавили
 
     ----------------------------------------------------------------------------
-    -- Переменные для "последней" записи (идентификация по ID_SEQ, DATNZ, NNZ)
+    -- Переменные для "последней" записи (идентифицируемой по ID_SEQ, DATNZ, NNZ)
     ----------------------------------------------------------------------------
     v_last_id_seq    TS.V_TS_MNLZ2_TASK.ID_SEQ%TYPE;
     v_last_datnz     TS.V_TS_MNLZ2_TASK.DATNZ%TYPE;
     v_last_nnz       TS.V_TS_MNLZ2_TASK.NNZ%TYPE;
-    v_found_last     BOOLEAN := FALSE;  -- нашли ли мы "последнюю" запись в курсоре
+    v_found_last     BOOLEAN := FALSE;  -- найден ли в курсоре последний добавленный элемент
 
     ----------------------------------------------------------------------------
     -- Курсор для выборки данных из TS.V_TS_MNLZ2_TASK
@@ -36,17 +35,15 @@ CREATE OR REPLACE PACKAGE BODY TS.PKG_TS_MNLZ2_TASK AS
              NNZ,
              OCHER
         FROM TS.V_TS_MNLZ2_TASK
-       WHERE DATNZ >= SYSDATE
+       WHERE DATNZ >= SYSDATE-1
        ORDER BY DATNZ, NNZ, OCHER, ID_SEQ;
-       
     c_source_rec c_source%ROWTYPE;
     
   BEGIN
     ----------------------------------------------------------------------------
     -- 1) Определяем количество записей в TS.T_TS_MNLZ2_TASK25
     ----------------------------------------------------------------------------
-    SELECT COUNT(*)
-      INTO v_current_count
+    SELECT COUNT(*) INTO v_current_count
       FROM TS.T_TS_MNLZ2_TASK25;
     
     IF v_current_count >= 20 THEN
@@ -68,14 +65,14 @@ CREATE OR REPLACE PACKAGE BODY TS.PKG_TS_MNLZ2_TASK AS
              v_last_nnz
         FROM TS.T_TS_MNLZ2_LASTRECORD
        WHERE ROWNUM = 1;  -- предполагаем, что там хранится единственная запись
-      v_found_last := FALSE; -- пока не нашли её в курсоре
+      v_found_last := FALSE; -- ещё не нашли эту запись в курсоре
     EXCEPTION
       WHEN NO_DATA_FOUND THEN
         -- Если таблица TS.T_TS_MNLZ2_LASTRECORD пуста, начинаем с начала
         v_last_id_seq := NULL;
         v_last_datnz  := NULL;
         v_last_nnz    := NULL;
-        v_found_last  := TRUE;  -- нет предыдущей записи – начинаем добавление с начала
+        v_found_last  := TRUE;  -- нет предыдущей записи – начинаем вставку с начала
     END;
     
     ----------------------------------------------------------------------------
@@ -87,8 +84,8 @@ CREATE OR REPLACE PACKAGE BODY TS.PKG_TS_MNLZ2_TASK AS
       EXIT WHEN c_source%NOTFOUND;
       
       ----------------------------------------------------------------------------
-      -- Если ещё не нашли последнюю запись (v_found_last = FALSE) и она существует,
-      -- пропускаем строки до нахождения совпадения по (ID_SEQ, DATNZ, NNZ)
+      -- Если предыдущая (последняя) запись ещё не найдена и она существует,
+      -- пропускаем строки до её обнаружения
       ----------------------------------------------------------------------------
       IF NOT v_found_last AND v_last_id_seq IS NOT NULL THEN
         IF    c_source_rec.ID_SEQ = v_last_id_seq
@@ -98,18 +95,17 @@ CREATE OR REPLACE PACKAGE BODY TS.PKG_TS_MNLZ2_TASK AS
           v_found_last := TRUE;
           CONTINUE;  -- следующая строка станет первой кандидатной для вставки
         ELSE
-          CONTINUE;  -- продолжаем поиск
+          CONTINUE;
         END IF;
       END IF;
       
       ----------------------------------------------------------------------------
-      -- 4) Проверяем, нет ли уже дубликата в TS.T_TS_MNLZ2_TASK25 по (ID_SEQ, DATNZ, NNZ)
+      -- 4) Проверяем, нет ли уже дубликата в TS.T_TS_MNLZ2_TASK25
       ----------------------------------------------------------------------------
       DECLARE
         v_dup_count NUMBER;
       BEGIN
-        SELECT COUNT(*)
-          INTO v_dup_count
+        SELECT COUNT(*) INTO v_dup_count
           FROM TS.T_TS_MNLZ2_TASK25
          WHERE ID_SEQ = c_source_rec.ID_SEQ
            AND DATNZ  = c_source_rec.DATNZ
@@ -127,7 +123,7 @@ CREATE OR REPLACE PACKAGE BODY TS.PKG_TS_MNLZ2_TASK AS
           
           v_inserted := v_inserted + 1;
           
-          -- Обновляем переменные последней записи
+          -- Обновляем данные последней записи
           v_last_id_seq := c_source_rec.ID_SEQ;
           v_last_datnz  := c_source_rec.DATNZ;
           v_last_nnz    := c_source_rec.NNZ;
@@ -145,17 +141,17 @@ CREATE OR REPLACE PACKAGE BODY TS.PKG_TS_MNLZ2_TASK AS
     -- 6) Если были добавлены записи, обновляем (или вставляем) запись в TS.T_TS_MNLZ2_LASTRECORD
     ----------------------------------------------------------------------------
     IF v_inserted > 0 THEN
-      MERGE INTO TS.T_TS_MNLZ2_LASTRECORD LR
-      USING (SELECT v_last_id_seq AS ID_SEQ,
-                    v_last_datnz  AS DATNZ,
-                    v_last_nnz    AS NNZ
-             FROM DUAL) SRC
-         ON (LR.ID_SEQ = SRC.ID_SEQ AND LR.DATNZ = SRC.DATNZ AND LR.NNZ = SRC.NNZ)
-       WHEN MATCHED THEN
-         UPDATE SET LR.DATNZ = SRC.DATNZ  -- при необходимости обновить и другие поля
-       WHEN NOT MATCHED THEN
-         INSERT (ID_SEQ, DATNZ, NNZ)
-         VALUES (SRC.ID_SEQ, SRC.DATNZ, SRC.NNZ);
+      -- Пытаемся обновить существующую запись
+      UPDATE TS.T_TS_MNLZ2_LASTRECORD
+         SET DATNZ = v_last_datnz
+       WHERE ID_SEQ = v_last_id_seq
+         AND NNZ    = v_last_nnz;
+      
+      IF SQL%ROWCOUNT = 0 THEN
+        -- Если записи нет, вставляем новую
+        INSERT INTO TS.T_TS_MNLZ2_LASTRECORD (ID_SEQ, DATNZ, NNZ)
+        VALUES (v_last_id_seq, v_last_datnz, v_last_nnz);
+      END IF;
       
       DBMS_OUTPUT.PUT_LINE('Добавлено ' || v_inserted || ' записей.');
     ELSE
