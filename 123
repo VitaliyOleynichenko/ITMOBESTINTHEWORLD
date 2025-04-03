@@ -412,3 +412,159 @@ EXCEPTION ...
 
 
 
+
+CREATE OR REPLACE PACKAGE BODY TS.PKG_TS_MNLZ2_TASK AS
+
+  PROCEDURE LOAD_TASKS IS
+    ----------------------------------------------------------------------------
+    -- Локальные переменные
+    ----------------------------------------------------------------------------
+    v_current_count  NUMBER;         -- Количество записей, уже находящихся в TS.T_TS_MNLZ2_TASK25
+    v_needed         NUMBER;         -- Количество записей, которые нужно добавить, чтобы довести общее число до 25
+    v_inserted       NUMBER := 0;    -- Счётчик реально вставленных записей
+
+    ----------------------------------------------------------------------------
+    -- Переменные для хранения информации о "последней" записи 
+    -- (идентифицируемой по полям ID_SEQ, DATNZ, NNZ)
+    ----------------------------------------------------------------------------
+    v_last_id_seq    TS.V_TS_MNLZ2_TASK.ID_SEQ%TYPE; -- Значение ID_SEQ последней вставленной записи
+    v_last_datnz     TS.V_TS_MNLZ2_TASK.DATNZ%TYPE;    -- Значение DATNZ последней вставленной записи
+    v_last_nnz       TS.V_TS_MNLZ2_TASK.NNZ%TYPE;      -- Значение NNZ последней вставленной записи
+    v_found_last     BOOLEAN := FALSE;               -- Флаг: найдена ли "последняя" запись в курсоре
+
+    ----------------------------------------------------------------------------
+    -- Курсор для выборки записей из представления TS.V_TS_MNLZ2_TASK
+    ----------------------------------------------------------------------------
+    CURSOR c_source IS
+      SELECT 
+             ID_SEQ,
+             DATNZ,
+             NNZ,
+             OCHER
+        FROM TS.V_TS_MNLZ2_TASK
+       WHERE DATNZ >= SYSDATE-1
+       ORDER BY DATNZ, NNZ, OCHER, ID_SEQ;
+    c_source_rec c_source%ROWTYPE;  -- Переменная для хранения текущей строки курсора
+    
+  BEGIN
+    ----------------------------------------------------------------------------
+    -- 1) Определяем количество записей в целевой таблице TS.T_TS_MNLZ2_TASK25
+    ----------------------------------------------------------------------------
+    SELECT COUNT(*) INTO v_current_count
+      FROM TS.T_TS_MNLZ2_TASK25;
+    
+    IF v_current_count >= 20 THEN
+      DBMS_OUTPUT.PUT_LINE('Записей уже 20 и более, добавлять новые не нужно.');
+      RETURN;
+    ELSE
+      v_needed := 25 - v_current_count;  -- Сколько записей нужно добавить
+    END IF;
+    
+    ----------------------------------------------------------------------------
+    -- 2) Считываем "последнюю" добавленную запись из TS.T_TS_MNLZ2_LASTRECORD
+    ----------------------------------------------------------------------------
+    BEGIN
+      SELECT ID_SEQ,
+             DATNZ,
+             NNZ
+        INTO v_last_id_seq,
+             v_last_datnz,
+             v_last_nnz
+        FROM TS.T_TS_MNLZ2_LASTRECORD
+       WHERE ROWNUM = 1;  -- Предполагаем, что таблица содержит ровно одну запись
+      v_found_last := FALSE;  -- Пока не нашли эту запись в курсоре
+    EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+        -- Если таблица TS.T_TS_MNLZ2_LASTRECORD пуста, начинаем вставку с начала
+        v_last_id_seq := NULL;
+        v_last_datnz  := NULL;
+        v_last_nnz    := NULL;
+        v_found_last  := TRUE;  -- Флаг выставляем, чтобы сразу вставлять записи
+    END;
+    
+    ----------------------------------------------------------------------------
+    -- 3) Перебираем записи из TS.V_TS_MNLZ2_TASK курсором
+    -- Используем метку outer_loop для корректного выхода из внешнего цикла
+    ----------------------------------------------------------------------------
+    <<outer_loop>>
+    LOOP
+      FETCH c_source INTO c_source_rec;
+      EXIT WHEN c_source%NOTFOUND;
+      
+      ----------------------------------------------------------------------------
+      -- Если предыдущая (последняя) запись ещё не найдена и есть данные для сравнения,
+      -- пропускаем записи до её обнаружения.
+      ----------------------------------------------------------------------------
+      IF NOT v_found_last AND v_last_id_seq IS NOT NULL THEN
+        IF    c_source_rec.ID_SEQ = v_last_id_seq
+           AND c_source_rec.DATNZ  = v_last_datnz
+           AND c_source_rec.NNZ    = v_last_nnz
+        THEN
+          v_found_last := TRUE;   -- Найдена последняя запись; с этого момента начинаем вставку новых записей
+          CONTINUE;               -- Переходим к следующей итерации (не вставляем эту строку)
+        ELSE
+          CONTINUE;               -- Пока не нашли последнюю, пропускаем все строки
+        END IF;
+      END IF;
+      
+      ----------------------------------------------------------------------------
+      -- 4) Проверяем, нет ли уже дубликата в TS.T_TS_MNLZ2_TASK25 по ключевым полям
+      ----------------------------------------------------------------------------
+      DECLARE
+        v_dup_count NUMBER;
+      BEGIN
+        SELECT COUNT(*) INTO v_dup_count
+          FROM TS.T_TS_MNLZ2_TASK25
+         WHERE ID_SEQ = c_source_rec.ID_SEQ
+           AND DATNZ  = c_source_rec.DATNZ
+           AND NNZ    = c_source_rec.NNZ;
+           
+        IF v_dup_count = 0 THEN
+          ----------------------------------------------------------------------------
+          -- 5) Вставляем запись в TS.T_TS_MNLZ2_TASK25, если дубликата нет
+          ----------------------------------------------------------------------------
+          INSERT INTO TS.T_TS_MNLZ2_TASK25 (ID_SEQ, DATNZ, NNZ, OCHER)
+          VALUES (c_source_rec.ID_SEQ,
+                  c_source_rec.DATNZ,
+                  c_source_rec.NNZ,
+                  c_source_rec.OCHER);
+          
+          v_inserted := v_inserted + 1;  -- Увеличиваем счётчик вставленных записей
+          
+          -- Обновляем переменные последней записи текущими значениями из вставленной строки
+          v_last_id_seq := c_source_rec.ID_SEQ;
+          v_last_datnz  := c_source_rec.DATNZ;
+          v_last_nnz    := c_source_rec.NNZ;
+          
+          ----------------------------------------------------------------------------
+          -- Если вставлено нужное количество записей, выходим из внешнего цикла
+          ----------------------------------------------------------------------------
+          IF v_inserted >= v_needed THEN
+            EXIT outer_loop;
+          END IF;
+        END IF;
+      END;
+      
+    END LOOP outer_loop;
+    CLOSE c_source;
+    
+    ----------------------------------------------------------------------------
+    -- 6) Обновляем таблицу TS.T_TS_MNLZ2_LASTRECORD:
+    --    удаляем все старые записи и вставляем только одну актуальную последнюю запись.
+    ----------------------------------------------------------------------------
+    IF v_inserted > 0 THEN
+      DELETE FROM TS.T_TS_MNLZ2_LASTRECORD;  -- Удаляем все существующие записи
+      INSERT INTO TS.T_TS_MNLZ2_LASTRECORD (ID_SEQ, DATNZ, NNZ)
+      VALUES (v_last_id_seq, v_last_datnz, v_last_nnz);  -- Вставляем актуальную последнюю запись
+      
+      DBMS_OUTPUT.PUT_LINE('Добавлено ' || v_inserted || ' записей.');
+    ELSE
+      DBMS_OUTPUT.PUT_LINE('Новых уникальных записей не найдено.');
+    END IF;
+    
+  END LOAD_TASKS;
+
+END PKG_TS_MNLZ2_TASK;
+/
+
+
