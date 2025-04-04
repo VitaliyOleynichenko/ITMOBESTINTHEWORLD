@@ -190,5 +190,51 @@ ocher – новое значение для поля OCHER (в качестве
 Коммит и возврат ответа:
 При успешном выполнении запроса выполняется коммит (OCI_COMMIT), и скрипт возвращает JSON с успешным сообщением.
 
+Пример вызова из JavaScript (fetch):
+html
+Копировать
+<script>
+function updateTask() {
+  // Пример данных для обновления
+  const updateData = {
+    id_seq: 123,
+    datnz: "2023-04-06",
+    nnz: 1,
+    oder_field: "Новое значение",  // Если требуется обновить другое поле
+    ocher: "Новое значение"         // Здесь поле OCHER, которое обновляем
+  };
+
+  fetch('update_task.php', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(updateData)
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error("Ошибка сети: " + response.statusText);
+    }
+    return response.json();
+  })
+  .then(data => {
+    console.log('Ответ от сервера:', data);
+    // Здесь можно обработать ответ, например, обновить интерфейс
+  })
+  .catch(error => {
+    console.error('Ошибка при обновлении записи:', error);
+  });
+}
+
+// Пример вызова функции
+document.addEventListener('DOMContentLoaded', updateTask);
+</script>
+Таким образом, при вызове функции из интерфейса (JavaScript) данные отправляются в update_task.php, который обновляет запись в таблице TS.T_TS_MNLZ2_TASK25 и возвращает JSON-ответ с результатом операции.
+
+
+
+
+
+
 
 
