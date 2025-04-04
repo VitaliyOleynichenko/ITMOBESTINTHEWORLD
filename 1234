@@ -1,0 +1,194 @@
+PHP (get_tasks.php)
+php
+Копировать
+<?php
+// Настройка параметров подключения к Oracle
+$username = 'your_username';         // замените на имя пользователя
+$password = 'your_password';         // замените на пароль
+$connection_string = 'localhost/XE';   // замените на ваш TNS алиас или строку подключения
+
+// Устанавливаем соединение с базой данных Oracle
+$conn = oci_connect($username, $password, $connection_string);
+if (!$conn) {
+    $e = oci_error();
+    // Если не удалось подключиться, возвращаем JSON с ошибкой
+    header('Content-Type: application/json');
+    echo json_encode(['error' => $e['message']]);
+    exit;
+}
+
+// SQL-запрос для выборки нужных полей из таблицы TS.T_TS_MNLZ2_TASK25
+$sql = "SELECT ID_SEQ, DATNZ, NNZ, OCHER FROM TS.T_TS_MNLZ2_TASK25";
+$stid = oci_parse($conn, $sql);
+if (!oci_execute($stid)) {
+    $e = oci_error($stid);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => $e['message']]);
+    oci_close($conn);
+    exit;
+}
+
+$rows = [];
+// Формируем массив строк из результата запроса
+while($row = oci_fetch_assoc($stid)){
+    // При необходимости можно преобразовать формат даты
+    // Например, $row['DATNZ'] = date('Y-m-d', strtotime($row['DATNZ']));
+    $rows[] = $row;
+}
+
+// Освобождаем ресурсы и закрываем соединение
+oci_free_statement($stid);
+oci_close($conn);
+
+// Устанавливаем заголовок, чтобы браузер понимал, что это JSON
+header('Content-Type: application/json');
+// Выводим данные в формате JSON
+echo json_encode($rows);
+?>
+JavaScript (например, использование fetch)
+html
+Копировать
+<script>
+// Функция для получения задач через AJAX-запрос к get_tasks.php
+function loadTasks() {
+  fetch('get_tasks.php')
+    .then(response => {
+      if (!response.ok) {
+        throw new Error("Ошибка сети: " + response.statusText);
+      }
+      return response.json();
+    })
+    .then(data => {
+      // data – это массив объектов с полями ID_SEQ, DATNZ, NNZ, OCHER
+      console.log('Полученные данные:', data);
+      // Здесь можно обработать данные, например, отобразить их в таблице
+      // document.getElementById('taskContainer').innerHTML = ...
+    })
+    .catch(error => {
+      console.error('Ошибка при получении данных:', error);
+    });
+}
+
+// Пример вызова функции загрузки задач при загрузке страницы
+document.addEventListener('DOMContentLoaded', loadTasks);
+</script>
+Объяснение:
+PHP часть:
+
+Устанавливается соединение с Oracle с помощью функции oci_connect().
+
+Выполняется SQL-запрос к таблице TS.T_TS_MNLZ2_TASK25 для выборки полей ID_SEQ, DATNZ, NNZ, OCHER.
+
+Результаты выборки формируются в ассоциативный массив с помощью oci_fetch_assoc().
+
+Массив преобразуется в JSON через json_encode() и выводится с заголовком Content-Type: application/json.
+
+JavaScript часть:
+
+Функция loadTasks() отправляет запрос на файл get_tasks.php с использованием API fetch.
+
+Полученный JSON парсится и выводится в консоль или используется для обновления DOM.
+
+Функция вызывается при загрузке страницы (событие DOMContentLoaded).
+
+Таким образом, интерфейс (JavaScript) получает данные из таблицы через PHP, который обращается к Oracle, формирует JSON и передаёт его в браузер.
+
+Пример PHP‑скрипта (update_task.php)
+php
+Копировать
+<?php
+// Устанавливаем заголовок для JSON-ответа
+header('Content-Type: application/json');
+
+// Параметры подключения к Oracle
+$username = 'your_username';         // замените на имя пользователя
+$password = 'your_password';         // замените на пароль
+$connection_string = 'localhost/XE';   // замените на вашу строку подключения
+
+// Устанавливаем соединение с Oracle
+$conn = oci_connect($username, $password, $connection_string);
+if (!$conn) {
+    $e = oci_error();
+    echo json_encode(['error' => $e['message']]);
+    exit;
+}
+
+// Получаем JSON-данные из тела запроса
+$rawData = file_get_contents("php://input");
+$data = json_decode($rawData, true);
+
+if (!$data) {
+    echo json_encode(['error' => 'Некорректный JSON']);
+    oci_close($conn);
+    exit;
+}
+
+// Предположим, что JSON содержит следующие ключи:
+// - id_seq (уникальный идентификатор последовательности)
+// - datnz (дата в формате "YYYY-MM-DD")
+// - nnz (номер записи)
+// - oder_field (пример поля, которое требуется обновить; можно передать и другие поля)
+
+// Формируем SQL-запрос для обновления. Например, обновляем поле OCHER.
+$sql = "UPDATE TS.T_TS_MNLZ2_TASK25 
+        SET OCHER = :ocher
+        WHERE ID_SEQ = :id_seq 
+          AND DATNZ = TO_DATE(:datnz, 'YYYY-MM-DD')
+          AND NNZ = :nnz";
+
+$stid = oci_parse($conn, $sql);
+if (!$stid) {
+    $e = oci_error($conn);
+    echo json_encode(['error' => $e['message']]);
+    oci_close($conn);
+    exit;
+}
+
+// Привязываем параметры. Если требуется обновить несколько полей, добавьте их аналогичным образом.
+oci_bind_by_name($stid, ':ocher', $data['ocher']);
+oci_bind_by_name($stid, ':id_seq', $data['id_seq']);
+oci_bind_by_name($stid, ':datnz', $data['datnz']); // Ожидается, что дата передаётся в виде строки "YYYY-MM-DD"
+oci_bind_by_name($stid, ':nnz', $data['nnz']);
+
+// Выполняем запрос с коммитом
+if (!oci_execute($stid, OCI_COMMIT)) {
+    $e = oci_error($stid);
+    echo json_encode(['error' => $e['message']]);
+    oci_free_statement($stid);
+    oci_close($conn);
+    exit;
+}
+
+// Формируем успешный ответ
+echo json_encode([
+    'success' => true,
+    'message' => 'Запись успешно обновлена'
+]);
+
+// Освобождаем ресурсы
+oci_free_statement($stid);
+oci_close($conn);
+?>
+Как это работает:
+Получение входных данных:
+Скрипт читает тело POST-запроса (php://input) и декодирует JSON в массив. В примере ожидается, что JSON будет содержать ключи:
+
+id_seq – идентификатор последовательности,
+
+datnz – дата в формате "YYYY-MM-DD",
+
+nnz – номер записи,
+
+ocher – новое значение для поля OCHER (в качестве примера).
+
+Подключение к Oracle:
+Функция oci_connect устанавливает соединение с базой. В случае ошибки возвращается JSON с описанием ошибки.
+
+Подготовка и выполнение запроса:
+Подготавливается SQL‑запрос для обновления записи, где уникальность определяется по полям ID_SEQ, DATNZ (преобразуется с помощью TO_DATE) и NNZ. Затем привязываются значения из входного массива и выполняется запрос.
+
+Коммит и возврат ответа:
+При успешном выполнении запроса выполняется коммит (OCI_COMMIT), и скрипт возвращает JSON с успешным сообщением.
+
+
+
