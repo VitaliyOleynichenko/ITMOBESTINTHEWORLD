@@ -238,3 +238,377 @@ document.addEventListener('DOMContentLoaded', updateTask);
 
 
 
+
+db_connect.php
+Общий файл для подключения к БД. Подключайте его в каждом скрипте.
+
+php
+Копировать
+<?php
+// db_connect.php
+$username = 'your_username';
+$password = 'your_password';
+$connection_string = 'localhost/XE';
+
+$conn = oci_connect($username, $password, $connection_string);
+if (!$conn) {
+    $e = oci_error();
+    header('Content-Type: application/json');
+    echo json_encode(['error' => $e['message']]);
+    exit;
+}
+get_tasks.php
+Read All — получить все записи из TS.T_TS_MNLZ2_TASK25
+
+php
+Копировать
+<?php
+// get_tasks.php
+require 'db_connect.php';
+header('Content-Type: application/json');
+
+$sql = "
+  SELECT 
+    ID_SEQ,
+    TO_CHAR(DATNZ,'YYYY-MM-DD') AS DATNZ,
+    NNZ,
+    OCHER
+  FROM TS.T_TS_MNLZ2_TASK25
+  ORDER BY DATNZ, NNZ, ID_SEQ
+";
+$stid = oci_parse($conn, $sql);
+oci_execute($stid);
+
+$out = [];
+while ($row = oci_fetch_assoc($stid)) {
+    $out[] = $row;
+}
+
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode($out);
+get_task.php
+Read One — получить одну запись по ключам ID_SEQ, DATNZ, NNZ
+
+php
+Копировать
+<?php
+// get_task.php
+require 'db_connect.php';
+header('Content-Type: application/json');
+
+$input = json_decode(file_get_contents('php://input'), true);
+if (!$input) {
+    echo json_encode(['error'=>'Invalid JSON']);
+    exit;
+}
+
+$sql = "
+  SELECT 
+    ID_SEQ,
+    TO_CHAR(DATNZ,'YYYY-MM-DD') AS DATNZ,
+    NNZ,
+    OCHER
+  FROM TS.T_TS_MNLZ2_TASK25
+  WHERE ID_SEQ = :id_seq
+    AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+    AND NNZ    = :nnz
+";
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $input['id_seq']);
+oci_bind_by_name($stid, ':datnz',  $input['datnz']);
+oci_bind_by_name($stid, ':nnz',    $input['nnz']);
+oci_execute($stid);
+
+$row = oci_fetch_assoc($stid) ?: [];
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode($row);
+create_task.php
+Create — добавить новую запись
+
+php
+Копировать
+<?php
+// create_task.php
+require 'db_connect.php';
+header('Content-Type: application/json');
+
+$data = json_decode(file_get_contents('php://input'), true);
+if (!$data) {
+    echo json_encode(['error'=>'Invalid JSON']);
+    exit;
+}
+
+$sql = "
+  INSERT INTO TS.T_TS_MNLZ2_TASK25 (ID_SEQ, DATNZ, NNZ, OCHER)
+  VALUES (:id_seq, TO_DATE(:datnz,'YYYY-MM-DD'), :nnz, :ocher)
+";
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $data['id_seq']);
+oci_bind_by_name($stid, ':datnz',  $data['datnz']);
+oci_bind_by_name($stid, ':nnz',    $data['nnz']);
+oci_bind_by_name($stid, ':ocher',  $data['ocher']);
+
+$res = oci_execute($stid, OCI_COMMIT);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['success'=>$res]);
+update_task.php
+Update — изменить поле OCHER у существующей записи
+
+php
+Копировать
+<?php
+// update_task.php
+require 'db_connect.php';
+header('Content-Type: application/json');
+
+$data = json_decode(file_get_contents('php://input'), true);
+if (!$data) {
+    echo json_encode(['error'=>'Invalid JSON']);
+    exit;
+}
+
+$sql = "
+  UPDATE TS.T_TS_MNLZ2_TASK25
+     SET OCHER = :ocher
+   WHERE ID_SEQ = :id_seq
+     AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+     AND NNZ    = :nnz
+";
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':ocher',  $data['ocher']);
+oci_bind_by_name($stid, ':id_seq', $data['id_seq']);
+oci_bind_by_name($stid, ':datnz',  $data['datnz']);
+oci_bind_by_name($stid, ':nnz',    $data['nnz']);
+
+$res = oci_execute($stid, OCI_COMMIT);
+$rows = oci_num_rows($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['success'=>$res, 'rows_affected'=>$rows]);
+delete_task.php
+Delete — удалить запись
+
+php
+Копировать
+<?php
+// delete_task.php
+require 'db_connect.php';
+header('Content-Type: application/json');
+
+$data = json_decode(file_get_contents('php://input'), true);
+if (!$data) {
+    echo json_encode(['error'=>'Invalid JSON']);
+    exit;
+}
+
+$sql = "
+  DELETE FROM TS.T_TS_MNLZ2_TASK25
+   WHERE ID_SEQ = :id_seq
+     AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+     AND NNZ    = :nnz
+";
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $data['id_seq']);
+oci_bind_by_name($stid, ':datnz',  $data['datnz']);
+oci_bind_by_name($stid, ':nnz',    $data['nnz']);
+
+$res = oci_execute($stid, OCI_COMMIT);
+$rows = oci_num_rows($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['success'=>$res, 'rows_affected'=>$rows]);
+get_last.php
+Read LastRecord — получить текущую «последнюю» запись
+
+php
+Копировать
+<?php
+// get_last.php
+require 'db_connect.php';
+header('Content-Type: application/json');
+
+$sql = "
+  SELECT 
+    ID_SEQ,
+    TO_CHAR(DATNZ,'YYYY-MM-DD') AS DATNZ,
+    NNZ
+  FROM TS.T_TS_MNLZ2_LASTRECORD
+";
+$stid = oci_parse($conn, $sql);
+oci_execute($stid);
+
+$row = oci_fetch_assoc($stid) ?: [];
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode($row);
+set_last.php
+Set LastRecord — очистить и записать новую «последнюю» запись
+
+php
+Копировать
+<?php
+// set_last.php
+require 'db_connect.php';
+header('Content-Type: application/json');
+
+$data = json_decode(file_get_contents('php://input'), true);
+if (!$data) {
+    echo json_encode(['error'=>'Invalid JSON']);
+    exit;
+}
+
+// Удаляем старую запись
+oci_execute(oci_parse($conn, "DELETE FROM TS.T_TS_MNLZ2_LASTRECORD"), OCI_COMMIT);
+
+// Вставляем новую
+$sql = "
+  INSERT INTO TS.T_TS_MNLZ2_LASTRECORD (ID_SEQ, DATNZ, NNZ)
+  VALUES (:id_seq, TO_DATE(:datnz,'YYYY-MM-DD'), :nnz)
+";
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $data['id_seq']);
+oci_bind_by_name($stid, ':datnz',  $data['datnz']);
+oci_bind_by_name($stid, ':nnz',    $data['nnz']);
+
+$res = oci_execute($stid, OCI_COMMIT);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['success'=>$res]);
+2. JavaScript (app.js)
+Подключите этот файл на странице, где вы хотите работать с задачами.
+
+html
+Копировать
+<script src="app.js"></script>
+js
+Копировать
+// app.js
+
+// 1. Получить все задачи и отрисовать их
+async function loadTasks() {
+  try {
+    const res = await fetch('get_tasks.php');
+    const tasks = await res.json();
+    console.log('All tasks:', tasks);
+    // TODO: отрисовать tasks в таблице/списке
+  } catch (e) {
+    console.error('Failed to load tasks:', e);
+  }
+}
+
+// 2. Получить одну задачу (для редактирования)
+async function loadTask(id_seq, datnz, nnz) {
+  try {
+    const res = await fetch('get_task.php', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({id_seq, datnz, nnz})
+    });
+    const task = await res.json();
+    console.log('Loaded task:', task);
+    // TODO: заполнить форму данными task
+  } catch (e) {
+    console.error('Failed to load task:', e);
+  }
+}
+
+// 3. Создать новую задачу
+async function createTask(task) {
+  try {
+    const res = await fetch('create_task.php', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(task)
+    });
+    const result = await res.json();
+    if (result.success) {
+      console.log('Task created');
+      loadTasks();
+    } else {
+      console.error('Create failed', result);
+    }
+  } catch (e) {
+    console.error('Failed to create task:', e);
+  }
+}
+
+// 4. Обновить задачу
+async function updateTask(task) {
+  try {
+    const res = await fetch('update_task.php', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(task)
+    });
+    const result = await res.json();
+    if (result.success) {
+      console.log('Task updated');
+      loadTasks();
+    } else {
+      console.error('Update failed', result);
+    }
+  } catch (e) {
+    console.error('Failed to update task:', e);
+  }
+}
+
+// 5. Удалить задачу
+async function deleteTask(id_seq, datnz, nnz) {
+  try {
+    const res = await fetch('delete_task.php', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({id_seq, datnz, nnz})
+    });
+    const result = await res.json();
+    if (result.success) {
+      console.log('Task deleted');
+      loadTasks();
+    } else {
+      console.error('Delete failed', result);
+    }
+  } catch (e) {
+    console.error('Failed to delete task:', e);
+  }
+}
+
+// 6. Получить текущую «последнюю» запись
+async function getLast() {
+  try {
+    const res = await fetch('get_last.php');
+    const last = await res.json();
+    console.log('Last record:', last);
+    return last;
+  } catch (e) {
+    console.error('Failed to get last record:', e);
+  }
+}
+
+// 7. Установить новую «последнюю» запись
+async function setLast(id_seq, datnz, nnz) {
+  try {
+    const res = await fetch('set_last.php', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({id_seq, datnz, nnz})
+    });
+    const result = await res.json();
+    console.log('Set last record:', result);
+  } catch (e) {
+    console.error('Failed to set last record:', e);
+  }
+}
+
+// При загрузке страницы сразу подтягиваем все задачи
+document.addEventListener('DOMContentLoaded', loadTasks);
+
