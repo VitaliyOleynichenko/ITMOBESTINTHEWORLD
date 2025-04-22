@@ -219,3 +219,372 @@ async function postAction(endpoint, payload) {
     body: JSON.stringify(payload)
   });
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ниже полный набор всех PHP‑скриптов, которые нужны в папке api/:
+
+1) api/db_connect.php
+php
+Копировать
+Редактировать
+<?php
+// Подключение к Oracle
+// Замените USERNAME, PASSWORD и CONNECTION_STRING на ваши реальные
+$username          = 'YOUR_USERNAME';
+$password          = 'YOUR_PASSWORD';
+$connection_string = 'HOST:PORT/SERVICE_NAME'; 
+
+// Пример CONNECTION_STRING: "dbhost.example.com:1521/OPTIM"
+// В вашем случае вместо HOST:PORT/SERVICE_NAME подставьте то, что знаете.
+// Если нужна SID, то "HOST:PORT/SID".
+
+$conn = oci_connect($username, $password, $connection_string);
+if (!$conn) {
+    $e = oci_error();
+    header('Content-Type: application/json', true, 500);
+    echo json_encode(['error' => $e['message']]);
+    exit;
+}
+?>
+2) api/get_tasks.php
+php
+Копировать
+Редактировать
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+require __DIR__ . '/db_connect.php';
+
+$sql = "
+  SELECT 
+    ID_SEQ,
+    TO_CHAR(DATNZ,'YYYY-MM-DD') AS DATNZ,
+    NNZ,
+    OCHER,
+    POSITION,
+    PRIORITY,
+    STATUS,
+    DZAG1,
+    DZAG2,
+    KOL1P,
+    DLOT,
+    MARKED_COUNT
+  FROM TS.T_TS_MNLZ2_TASK25
+  ORDER BY 
+    NVL(POSITION,9999),         -- сначала приоритетные, по позиции
+    DATNZ, NNZ, OCHER, ID_SEQ   -- затем все остальные по дате/номеру/очереди
+";
+
+$stid = oci_parse($conn, $sql);
+oci_execute($stid);
+
+$out = [];
+while ($row = oci_fetch_assoc($stid)) {
+    $out[] = $row;
+}
+
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode($out, JSON_UNESCAPED_UNICODE);
+3) api/move_up.php
+php
+Копировать
+Редактировать
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+$data = json_decode(file_get_contents('php://input'), true);
+require __DIR__ . '/db_connect.php';
+
+$id_seq = $data['id_seq'];
+$datnz  = $data['datnz'];  // формат YYYY-MM-DD
+$nnz    = $data['nnz'];
+
+$sql = "
+  DECLARE
+    cur_pos   NUMBER;
+    other_id  TS.T_TS_MNLZ2_TASK25.ID_SEQ%TYPE;
+    other_dn  TS.T_TS_MNLZ2_TASK25.DATNZ%TYPE;
+    other_nn  TS.T_TS_MNLZ2_TASK25.NNZ%TYPE;
+  BEGIN
+    -- текущее положение
+    SELECT POSITION 
+      INTO cur_pos
+      FROM TS.T_TS_MNLZ2_TASK25
+     WHERE ID_SEQ = :id_seq
+       AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+       AND NNZ    = :nnz;
+
+    IF cur_pos > 1 THEN
+      -- найдём задачу, у которой позиция = cur_pos-1
+      SELECT ID_SEQ, DATNZ, NNZ
+        INTO other_id, other_dn, other_nn
+        FROM TS.T_TS_MNLZ2_TASK25
+       WHERE PRIORITY = 1
+         AND POSITION = cur_pos-1
+       FOR UPDATE;
+
+      -- обменяем позиции
+      UPDATE TS.T_TS_MNLZ2_TASK25
+         SET POSITION = cur_pos
+       WHERE ID_SEQ = other_id
+         AND DATNZ  = other_dn
+         AND NNZ    = other_nn;
+
+      UPDATE TS.T_TS_MNLZ2_TASK25
+         SET POSITION = cur_pos-1
+       WHERE ID_SEQ = :id_seq
+         AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+         AND NNZ    = :nnz;
+    END IF;
+    COMMIT;
+  END;
+";
+
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $id_seq);
+oci_bind_by_name($stid, ':datnz',  $datnz);
+oci_bind_by_name($stid, ':nnz',    $nnz);
+oci_execute($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['ok'=>true]);
+4) api/move_down.php
+php
+Копировать
+Редактировать
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+$data = json_decode(file_get_contents('php://input'), true);
+require __DIR__ . '/db_connect.php';
+
+$id_seq = $data['id_seq'];
+$datnz  = $data['datnz'];
+$nnz    = $data['nnz'];
+
+$sql = "
+  DECLARE
+    cur_pos   NUMBER;
+    max_pos   NUMBER;
+    other_id  TS.T_TS_MNLZ2_TASK25.ID_SEQ%TYPE;
+    other_dn  TS.T_TS_MNLZ2_TASK25.DATNZ%TYPE;
+    other_nn  TS.T_TS_MNLZ2_TASK25.NNZ%TYPE;
+  BEGIN
+    -- текущее положение и макс позицию среди priority=1
+    SELECT POSITION, MAX(POSITION) 
+      INTO cur_pos, max_pos
+      FROM TS.T_TS_MNLZ2_TASK25
+     WHERE PRIORITY = 1
+     GROUP BY POSITION;
+
+    IF cur_pos < max_pos THEN
+      -- найдём задачу на cur_pos+1
+      SELECT ID_SEQ, DATNZ, NNZ
+        INTO other_id, other_dn, other_nn
+        FROM TS.T_TS_MNLZ2_TASK25
+       WHERE PRIORITY = 1
+         AND POSITION = cur_pos+1
+       FOR UPDATE;
+
+      -- обмен позиций
+      UPDATE TS.T_TS_MNLZ2_TASK25
+         SET POSITION = cur_pos
+       WHERE ID_SEQ = other_id
+         AND DATNZ  = other_dn
+         AND NNZ    = other_nn;
+
+      UPDATE TS.T_TS_MNLZ2_TASK25
+         SET POSITION = cur_pos+1
+       WHERE ID_SEQ = :id_seq
+         AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+         AND NNZ    = :nnz;
+    END IF;
+    COMMIT;
+  END;
+";
+
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $id_seq);
+oci_bind_by_name($stid, ':datnz',  $datnz);
+oci_bind_by_name($stid, ':nnz',    $nnz);
+oci_execute($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['ok'=>true]);
+5) api/promote.php
+php
+Копировать
+Редактировать
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+$data = json_decode(file_get_contents('php://input'), true);
+require __DIR__ . '/db_connect.php';
+
+$id_seq = $data['id_seq'];
+$datnz  = $data['datnz'];
+$nnz    = $data['nnz'];
+
+$sql = "
+  DECLARE
+    v_max NUMBER;
+  BEGIN
+    -- сдвинем вниз всех текущих priority=1
+    UPDATE TS.T_TS_MNLZ2_TASK25
+       SET POSITION = POSITION + 1
+     WHERE PRIORITY = 1;
+
+    -- найдём новую «голову»
+    SELECT MAX(POSITION) 
+      INTO v_max
+      FROM TS.T_TS_MNLZ2_TASK25
+     WHERE PRIORITY = 1;
+
+    -- обновим саму запись
+    UPDATE TS.T_TS_MNLZ2_TASK25
+       SET PRIORITY = 1,
+           POSITION = 1
+     WHERE ID_SEQ = :id_seq
+       AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+       AND NNZ    = :nnz;
+
+    COMMIT;
+  END;
+";
+
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $id_seq);
+oci_bind_by_name($stid, ':datnz',  $datnz);
+oci_bind_by_name($stid, ':nnz',    $nnz);
+oci_execute($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['ok'=>true]);
+6) api/postpone.php
+php
+Копировать
+Редактировать
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+$data = json_decode(file_get_contents('php://input'), true);
+require __DIR__ . '/db_connect.php';
+
+$id_seq = $data['id_seq'];
+$datnz  = $data['datnz'];
+$nnz    = $data['nnz'];
+
+$sql = "
+  BEGIN
+    UPDATE TS.T_TS_MNLZ2_TASK25
+       SET PRIORITY = 0,
+           POSITION = NULL
+     WHERE ID_SEQ = :id_seq
+       AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+       AND NNZ    = :nnz;
+    COMMIT;
+  END;
+";
+
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $id_seq);
+oci_bind_by_name($stid, ':datnz',  $datnz);
+oci_bind_by_name($stid, ':nnz',    $nnz);
+oci_execute($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['ok'=>true]);
+7) api/finish.php
+php
+Копировать
+Редактировать
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+$data = json_decode(file_get_contents('php://input'), true);
+require __DIR__ . '/db_connect.php';
+
+$id_seq = $data['id_seq'];
+$datnz  = $data['datnz'];
+$nnz    = $data['nnz'];
+
+$sql = "
+  BEGIN
+    UPDATE TS.T_TS_MNLZ2_TASK25
+       SET STATUS = 1
+     WHERE ID_SEQ = :id_seq
+       AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+       AND NNZ    = :nnz;
+    COMMIT;
+  END;
+";
+
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $id_seq);
+oci_bind_by_name($stid, ':datnz',  $datnz);
+oci_bind_by_name($stid, ':nnz',    $nnz);
+oci_execute($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['ok'=>true]);
+Кратко о каждом файле:
+
+db_connect.php — единый вход в БД, коннект по OCI.
+
+get_tasks.php — отдаёт JSON‑массив из T_TS_MNLZ2_TASK25.
+
+move_up.php / move_down.php — меняют местами позиции двух priority=1 записей.
+
+promote.php — делает задачу приоритетной (priority=1), вставляет её в начало списка (position=1), сдвигая остальных вниз.
+
+postpone.php — снимает приоритет (priority=0), сбрасывает position.
+
+finish.php — помечает задачу завершённой (status=1).
+
+После этого ваш JS из предыдущего ответа будет работать «из коробки».
+
+
+
+
+
+
+
+
+
