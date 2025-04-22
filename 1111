@@ -1,26 +1,63 @@
-// ============ Глобальные переменные ============
-let tableinf = [];      // данные из БД
-let selectedRow = null; // DOM‑элемент выбранной <tr>
-let menuEl = null;      // DOM‑элемент контекст‑меню
+/* Контейнер меню */
+.context-menu {
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  padding: 4px;
+  z-index: 10000;
+}
+/* Кнопки внутри меню */
+.context-menu-button {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+.context-menu-button:hover {
+  background: #eef;
+}
+/* Подсветка выбранной строки */
+.highlighted-row {
+  background: rgba(100,200,255,0.3) !important;
+}
 
-// ============ 1) Загрузка и отображение таблицы ============
+
+// ==================== ГЛОБАЛЬНЫЕ ====================
+let tableinf = [];       // сюда кладём данные из get_tasks.php
+let selectedRow = null;  // DOM‑узел <tr>, по которому кликнули
+
+// контейнер для контекст‑меню
+const menuEl = document.getElementById('menuTd');
+if (!menuEl) {
+  console.error('Не найден <div id="menuTd"> для контекст‑меню!');
+}
+menuEl.style.position = 'absolute';
+menuEl.style.display  = 'none';
+menuEl.className      = 'context-menu';
+
+// ==================== 1) ЗАГРУЗКА ТАБЛИЦЫ ====================
+document.addEventListener('DOMContentLoaded', reloadTable);
+
 async function reloadTable() {
   try {
     tableinf = await fetchDataFromServer();
-  } catch (e) {
-    console.error('Не удалось загрузить данные:', e);
+  } catch (err) {
+    console.error('Ошибка загрузки данных:', err);
     tableinf = [];
   }
-  addRow();       // ваша функция, которая заполняет <tbody>
-  setupTableClick(); // навесим клик‑лисенер
+  addRow();
+  setupTableClick();
 }
 
-// ============ 2) Фетч данных из PHP =============
+// ==================== 2) ФЕТЧ ИЗ PHP ====================
 async function fetchDataFromServer() {
   const resp = await fetch('api/get_tasks.php');
   if (!resp.ok) throw new Error(resp.statusText);
   const data = await resp.json();
-  // приводим к тому, что ожидает addRow()
+  // Приведём поля к тому, что ожидает addRow()
   return data.map(item => ({
     id_seq:       item.ID_SEQ,
     datnz:        item.DATNZ,
@@ -31,14 +68,14 @@ async function fetchDataFromServer() {
     status:       item.STATUS,
     dzag1:        item.DZAG1,
     dzag2:        item.DZAG2,
-    krat:         item.KRAT,
+    kol1p:        item.KOL1P,
     dlot:         item.DLOT,
     marked_count: item.MARKED_COUNT
-    // … остальные поля, которые вам нужны
+    // … остальное по необходимости
   }));
 }
 
-// ============ 3) Перерисовка строк =============
+// ==================== 3) ОТРИСОВКА СТРОК (addRow) ====================
 function addRow() {
   const tbody = document.querySelector('#tableTZ0 tbody');
   if (!tbody) {
@@ -46,31 +83,32 @@ function addRow() {
     return;
   }
   tbody.innerHTML = '';
+
   tableinf.forEach((row, i) => {
     const tr = document.createElement('tr');
     tr.dataset.index    = i;
     tr.dataset.priority = row.priority;
     tr.dataset.status   = row.status;
-    // формируем содержимое ячеек в том же порядке, как у вас было:
-    const idText      = `${row.datnz} ${row.nnz} ${row.id_seq}`;
-    const slabb       = `${row.dzag1}/${row.dzag2}`;
-    const needCut     = `${row.kol1p || ''}/${row.dlot || ''}`;
-    const kratText    = `${row.krat || ''} x ${row.dlot || ''}`;
-    const statusText  = row.priority == 1 ? 'Распределён' : 'Не распределён';
+
+    // Формируем текст ячеек точно как у вас в старом коде
+    const idText     = `${row.datnz} ${row.nnz} ${row.id_seq}`;
+    const slabb      = `${row.dzag1}/${row.dzag2}`;
+    const needCut    = `${row.kol1p||''}/${row.dlot||''}`;
+    const statusText = row.priority == 1 ? 'Распределён' : 'Не распределён';
 
     const fields = [
       row.position || '',  // позиция
-      row.id_seq,
-      row.ocher,
-      slabb,
-      needCut,
-      row.marked_count || '',
-      statusText
+      idText,              // длинная строка
+      row.nnmr || '',      // Марка (NNMR)
+      slabb,               // Крат: / заготовок
+      needCut,             // Нужно/факт
+      row.marked_count || '', // Размечено
+      statusText           // Статус
     ];
 
-    fields.forEach(text => {
+    fields.forEach(txt => {
       const td = document.createElement('td');
-      td.textContent = text;
+      td.textContent = txt;
       tr.appendChild(td);
     });
 
@@ -78,7 +116,7 @@ function addRow() {
   });
 }
 
-// ============ 4) Установка клика на таблицу ============
+// ==================== 4) КЛИК ПО ТАБЛИЦЕ ====================
 function setupTableClick() {
   document.removeEventListener('click', tableClick);
   document.addEventListener('click', tableClick);
@@ -86,60 +124,52 @@ function setupTableClick() {
 
 function tableClick(e) {
   const tr = e.target.closest('tr');
-  // клик по строке внутри tbody
   if (tr && tr.parentNode.tagName.toLowerCase() === 'tbody') {
-    // убираем подсветку старой
+    // кликнули именно по строке таблицы
     if (selectedRow) selectedRow.classList.remove('highlighted-row');
-    // сохраняем новую
     selectedRow = tr;
     tr.classList.add('highlighted-row');
-    // показываем меню действий
+    // и показываем меню
     showMenu(tr, e.pageX, e.pageY);
   } else {
-    // клик вне строки — скрыть меню
     hideMenu();
   }
 }
 
-// ============ 5) Контекст‑меню ============
-function showMenu(tr, x, y) {
-  hideMenu(); // почистим старое
-
+// ==================== 5) КОНТЕКСТ‑МЕНЮ ====================
+function showMenu(tr, pageX, pageY) {
+  hideMenu();  // на всякий
+  // получаем нужные данные из строки
   const idx      = +tr.dataset.index;
   const priority = +tr.dataset.priority;
   const status   = +tr.dataset.status;
 
-  // создаём меню
-  menuEl = document.createElement('div');
-  menuEl.className = 'context-menu';
-  menuEl.style.top  = y + 'px';
-  menuEl.style.left = x + 'px';
-
-  // кнопки всегда вверх/вниз, если не завершено
-  if (status !== 1) {
-    addBtn(menuEl, '↑ Вверх',   () => moveUp(idx));
-    addBtn(menuEl, '↓ Вниз',    () => moveDown(idx));
-
+  // наполняем menuEl
+  menuEl.innerHTML = '';
+  if (status !== 1) {    // если не «завершено»
+    addBtn(menuEl, '↑ Вверх',    () => moveUp(idx));
+    addBtn(menuEl, '↓ Вниз',     () => moveDown(idx));
     if (priority === 0) {
       addBtn(menuEl, 'Следующий ▶', () => promote(idx));
     } else {
       addBtn(menuEl, 'Отложить ⏸',  () => postpone(idx));
     }
-    addBtn(menuEl, 'Закончить ✖',   () => finishTask(idx));
+    addBtn(menuEl, 'Закончить ✖',  () => finishTask(idx));
   }
 
-  document.body.appendChild(menuEl);
-  // клик в любом месте закрывает меню, кроме самого меню
-  setTimeout(() => {
+  // Позиционируем рядом с курсором
+  menuEl.style.top     = pageY + 'px';
+  menuEl.style.left    = pageX + 'px';
+  menuEl.style.display = 'block';
+
+  // клик вне меню скроет его
+  setTimeout(()=>{
     document.addEventListener('click', onDocClick);
-  }, 0);
+  },0);
 }
 
 function hideMenu() {
-  if (menuEl) {
-    menuEl.remove();
-    menuEl = null;
-  }
+  menuEl.style.display = 'none';
   if (selectedRow) {
     selectedRow.classList.remove('highlighted-row');
     selectedRow = null;
@@ -148,23 +178,24 @@ function hideMenu() {
 }
 
 function onDocClick(e) {
-  if (menuEl && !menuEl.contains(e.target)) {
+  if (!menuEl.contains(e.target)) {
     hideMenu();
   }
 }
 
-function addBtn(menu, label, fn) {
+function addBtn(container, label, fn) {
   const btn = document.createElement('button');
   btn.textContent = label;
-  btn.onclick = async () => {
+  btn.className   = 'context-menu-button';
+  btn.onclick     = async () => {
     await fn();
     hideMenu();
     await reloadTable();
   };
-  menu.appendChild(btn);
+  container.appendChild(btn);
 }
 
-// ============ 6) Действия, вызывающие PHP =============
+// ==================== 6) ДЕЙСТВИЯ, ВЫЗЫВАЮЩИЕ PHP ====================
 async function moveUp(idx) {
   await postAction('move_up.php', tableinf[idx]);
 }
@@ -184,10 +215,7 @@ async function finishTask(idx) {
 async function postAction(endpoint, payload) {
   await fetch(`api/${endpoint}`, {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
+    headers:{ 'Content-Type':'application/json' },
     body: JSON.stringify(payload)
   });
 }
-
-// ============ 7) Запуск при загрузке страницы ============
-document.addEventListener('DOMContentLoaded', reloadTable);
