@@ -588,3 +588,160 @@ finish.php — помечает задачу завершённой (status=1).
 
 
 
+
+
+
+
+
+
+
+
+
+
+1) api/promote.php
+php
+Копировать код
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+ini_set('display_errors',1);
+error_reporting(E_ALL);
+
+$data = json_decode(file_get_contents('php://input'), true);
+require __DIR__ . '/db_connect.php';
+
+$id_seq = $data['id_seq'];
+$datnz  = $data['datnz'];
+$nnz    = $data['nnz'];
+
+$sql = "
+DECLARE
+  v_old_prio NUMBER;
+  v_old_pos  NUMBER;
+BEGIN
+  -- Сначала захватим текущий приоритет и позицию этой задачи (если есть)
+  SELECT PRIORITY, POSITION
+    INTO v_old_prio, v_old_pos
+    FROM TS.T_TS_MNLZ2_TASK25
+   WHERE ID_SEQ = :id_seq
+     AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+     AND NNZ    = :nnz
+   FOR UPDATE;
+
+  IF v_old_prio = 1 THEN
+    -- Если она уже была в приоритете, сдвигаем вниз только тех, кто
+    -- стоял выше неё (позиции < её старой позиции)
+    UPDATE TS.T_TS_MNLZ2_TASK25
+       SET POSITION = POSITION + 1
+     WHERE PRIORITY = 1
+       AND POSITION < v_old_pos;
+  ELSE
+    -- Если она НЕ была приоритетной, сдвигаем вниз всех текущих
+    UPDATE TS.T_TS_MNLZ2_TASK25
+       SET POSITION = POSITION + 1
+     WHERE PRIORITY = 1;
+  END IF;
+
+  -- И, наконец, делаем эту задачу приоритетной и ставим её на позицию 1
+  UPDATE TS.T_TS_MNLZ2_TASK25
+     SET PRIORITY = 1,
+         POSITION = 1
+   WHERE ID_SEQ = :id_seq
+     AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+     AND NNZ    = :nnz;
+
+  COMMIT;
+END;";
+
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $id_seq);
+oci_bind_by_name($stid, ':datnz',  $datnz);
+oci_bind_by_name($stid, ':nnz',    $nnz);
+oci_execute($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['ok'=>true]);
+2) api/postpone.php
+php
+Копировать код
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+ini_set('display_errors',1);
+error_reporting(E_ALL);
+
+$data = json_decode(file_get_contents('php://input'), true);
+require __DIR__ . '/db_connect.php';
+
+$id_seq = $data['id_seq'];
+$datnz  = $data['datnz'];
+$nnz    = $data['nnz'];
+
+$sql = "
+DECLARE
+  v_old_pos NUMBER;
+BEGIN
+  -- Считаем, с какой позиции будем «вытаскивать» задачу
+  SELECT POSITION
+    INTO v_old_pos
+    FROM TS.T_TS_MNLZ2_TASK25
+   WHERE ID_SEQ = :id_seq
+     AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+     AND NNZ    = :nnz
+   FOR UPDATE;
+
+  -- Снимаем приоритет и обнуляем позицию у нашей задачи
+  UPDATE TS.T_TS_MNLZ2_TASK25
+     SET PRIORITY = 0,
+         POSITION = NULL
+   WHERE ID_SEQ = :id_seq
+     AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+     AND NNZ    = :nnz;
+
+  -- Сдвигаем «вверх» всех, кто стоял ниже отложенной (позиции > v_old_pos)
+  UPDATE TS.T_TS_MNLZ2_TASK25
+     SET POSITION = POSITION - 1
+   WHERE PRIORITY = 1
+     AND POSITION > v_old_pos;
+
+  COMMIT;
+END;";
+
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $id_seq);
+oci_bind_by_name($stid, ':datnz',  $datnz);
+oci_bind_by_name($stid, ':nnz',    $nnz);
+oci_execute($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['ok'=>true]);
+Краткое пояснение логики
+promote.php
+
+Читает старые PRIORITY и POSITION для выбранной задачи.
+
+Если задача уже была приоритетной, то сдвигает вниз (позицию+1) всех, кто стоял выше неё (позиции < старой).
+Если ещё не была — сдвигает вниз всех приоритетных сразу.
+
+Обновляет саму задачу: PRIORITY=1, POSITION=1.
+
+Коммитит.
+
+postpone.php
+
+Читает старую POSITION выбранной задачи.
+
+Снимает у неё приоритет и обнуляет позицию (PRIORITY=0, POSITION=NULL).
+
+Сдвигает вверх (позицию–1) всех приоритетных задач, которые стояли ниже отложенной (позиции > старая).
+
+Коммитит.
+
+Эти две процедуры теперь поддерживают ровную перестановку при добавлении («Следующий») и удалении («Отложить») из приоритетного списка.
+
+
+
+
+
+
+
