@@ -745,3 +745,95 @@ postpone.php
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+$data = json_decode(file_get_contents('php://input'), true);
+require __DIR__ . '/db_connect.php';
+
+$id_seq = $data['id_seq'];
+$datnz  = $data['datnz'];
+$nnz    = $data['nnz'];
+
+$sql = "
+DECLARE
+  cur_pos     NUMBER;
+  max_pos     NUMBER;
+  other_id    TS.T_TS_MNLZ2_TASK25.ID_SEQ%TYPE;
+  other_dn    TS.T_TS_MNLZ2_TASK25.DATNZ%TYPE;
+  other_nn    TS.T_TS_MNLZ2_TASK25.NNZ%TYPE;
+BEGIN
+  -- 1) Узнаём текущую позицию нашей задачи
+  SELECT POSITION
+    INTO cur_pos
+    FROM TS.T_TS_MNLZ2_TASK25
+   WHERE ID_SEQ = :id_seq
+     AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+     AND NNZ    = :nnz
+   FOR UPDATE;
+
+  -- 2) Узнаём, сколько всего приоритетных задач
+  SELECT MAX(POSITION)
+    INTO max_pos
+    FROM TS.T_TS_MNLZ2_TASK25
+   WHERE PRIORITY = 1;
+
+  -- 3) Если мы не на самом низу — меняем местами с задачей ниже
+  IF cur_pos < max_pos THEN
+
+    -- найдём запись, у которой POSITION = cur_pos+1
+    SELECT ID_SEQ, DATNZ, NNZ
+      INTO other_id, other_dn, other_nn
+      FROM TS.T_TS_MNLZ2_TASK25
+     WHERE PRIORITY = 1
+       AND POSITION = cur_pos + 1
+     FOR UPDATE;
+
+    -- сдвинем «соседа» вверх (заняв нашу позицию)
+    UPDATE TS.T_TS_MNLZ2_TASK25
+       SET POSITION = cur_pos
+     WHERE ID_SEQ = other_id
+       AND DATNZ  = other_dn
+       AND NNZ    = other_nn;
+
+    -- а нашу задачу вниз
+    UPDATE TS.T_TS_MNLZ2_TASK25
+       SET POSITION = cur_pos + 1
+     WHERE ID_SEQ = :id_seq
+       AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+       AND NNZ    = :nnz;
+  END IF;
+
+  COMMIT;
+END;
+";
+
+$stid = oci_parse($conn, $sql);
+oci_bind_by_name($stid, ':id_seq', $id_seq);
+oci_bind_by_name($stid, ':datnz',  $datnz);
+oci_bind_by_name($stid, ':nnz',    $nnz);
+oci_execute($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode(['ok' => true]);
+
+
+
+
+
