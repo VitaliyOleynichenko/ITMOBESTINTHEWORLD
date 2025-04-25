@@ -1,63 +1,96 @@
+document.addEventListener('click', tableClick);
+
 function tableClick(e) {
-  console.group('%c► tableClick', 'background:#222;color:#bada55;');
-
-  // 1) Кликнули куда-то
-  console.log('event.target:', e.target);
-  console.log('target.tagName:', e.target.tagName);
-
-  // 2) closest('tr')
+  // а) находим ближайший <tr> от места клика
   const tr = e.target.closest('tr');
-  console.log('closest tr:', tr);
-  if (!tr) {
-    console.warn('—> tr не найден, выход');
-    console.groupEnd();
-    return;
+
+  // б) убедимся, что это действительно строка внутри <tbody>
+  if (tr && tr.parentNode.tagName.toLowerCase() === 'tbody') {
+
+    // — если до этого уже что-то было выделено, снимем у старой тр класс
+    if (selectedRow && selectedRow !== tr) {
+      selectedRow.classList.remove('highlighted-row');
+    }
+
+    // — запомним новую строку и добавим ей класс
+    selectedRow = tr;
+    tr.classList.add('highlighted-row');
+
+    // — показываем меню именно для неё
+    showMenu(tr, e.pageX, e.pageY);
+
+  } else {
+    // кликнули вне строк — скрываем меню (и сбрасываем подсветку)
+    hideMenu();
+  }
+}
+
+function showMenu(tr, pageX, pageY) {
+  // НЕ вызывать hideMenu() тут! Мы уже сняли старую подсветку в tableClick.
+
+  // очистим старые кнопки
+  menuEl.innerHTML = '';
+
+  // прочитаем из tr необходимые данные
+  const idx      = +tr.dataset.index;
+  const priority = +tr.dataset.priority;
+  const status   = +tr.dataset.status;
+
+  // — ВСЕГДА вверх/вниз, если статус != 1
+  if (status !== 1) {
+    addBtn(menuEl, '↑ Вверх',   () => moveUp(idx));
+    addBtn(menuEl, '↓ Вниз',    () => moveDown(idx));
+
+    // — кнопка «Следующий» или «Отложить»
+    if (priority === 0) {
+      addBtn(menuEl, 'Следующий ▶', () => promote(idx));
+    } else {
+      addBtn(menuEl, 'Отложить ⏸',   () => postpone(idx));
+    }
+    // — и «Закончить»
+    addBtn(menuEl, 'Закончить ✖', () => finishTask(idx));
   }
 
-  // 3) Это внутри <tbody>?
-  const isInTbody = tr.parentNode && tr.parentNode.tagName.toLowerCase() === 'tbody';
-  console.log('tr.parentNode.tagName:', tr.parentNode.tagName, '| in tbody?', isInTbody);
-  if (!isInTbody) {
-    console.warn('—> клик не по строке тела таблицы, выход');
-    console.groupEnd();
-    return;
-  }
+  // позиционируем меню рядом с курсором
+  menuEl.style.top     = pageY + 'px';
+  menuEl.style.left    = pageX + 'px';
+  menuEl.style.display = 'block';
 
-  // 4) Состояние атрибута class ДО любых манипуляций
-  console.log('TR.hasAttribute("class") before:', tr.hasAttribute('class'));
-  console.log('TR.getAttribute("class") before:', JSON.stringify(tr.getAttribute('class')));
-  console.log('TR.classList before:', [...tr.classList]);
+  // клик вне меню скроет его
+  setTimeout(() => {
+    document.addEventListener('click', onDocClick);
+  }, 0);
+}
 
-  // 5) Если есть выделенная строка — снимем с неё класс
-  if (selectedRow && selectedRow !== tr) {
-    console.log('— Снимаем с предыдущей selectedRow:', selectedRow);
-    console.log('  classList before remove:', [...selectedRow.classList]);
+function hideMenu() {
+  // скрываем сам контейнер
+  menuEl.style.display = 'none';
+
+  // снимаем подсветку, если она есть
+  if (selectedRow) {
     selectedRow.classList.remove('highlighted-row');
-    console.log('  classList after remove :', [...selectedRow.classList]);
-    console.log('  outerHTML:', selectedRow.outerHTML);
+    selectedRow = null;
   }
 
-  // 6) Назначаем новую selectedRow
-  selectedRow = tr;
-  console.log('— Новая selectedRow =', selectedRow);
+  document.removeEventListener('click', onDocClick);
+}
 
-  // 7) Заново логируем перед добавлением
-  console.log('TR.hasAttribute("class") now:', tr.hasAttribute('class'));
-  console.log('TR.getAttribute("class") now:', JSON.stringify(tr.getAttribute('class')));
-  console.log('TR.classList now         :', [...tr.classList]);
+function onDocClick(e) {
+  // если кликнули вне самого меню — спрячем всё
+  if (!menuEl.contains(e.target)) {
+    hideMenu();
+  }
+}
 
-  // 8) Добавляем класс
-  console.log('— Делем tr.classList.add("highlighted-row")');
-  tr.classList.add('highlighted-row');
-
-  // 9) Состояние ПОСЛЕ добавления
-  console.log('TR.hasAttribute("class") after:', tr.hasAttribute('class'));
-  console.log('TR.getAttribute("class") after:', JSON.stringify(tr.getAttribute('class')));
-  console.log('TR.classList after         :', [...tr.classList]);
-  console.log('TR.outerHTML               :', tr.outerHTML);
-
-  console.groupEnd();
-
-  // 10) Покажем меню
-  showMenu(tr, e.pageX, e.pageY);
+// вспомогалка для кнопок
+function addBtn(container, label, fn) {
+  const btn = document.createElement('button');
+  btn.textContent = label;
+  btn.className   = 'context-menu-button';
+  btn.onclick     = async () => {
+    await fn();
+    hideMenu();
+    await reloadTable();  // если нужно снова перерисовать таблицу
+  };
+  container.appendChild(btn);
 }
