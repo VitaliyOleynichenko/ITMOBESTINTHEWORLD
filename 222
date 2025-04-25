@@ -1,0 +1,63 @@
+function tableClick(e) {
+  console.group('%c► tableClick', 'background:#222;color:#bada55;');
+
+  // 1) Кликнули куда-то
+  console.log('event.target:', e.target);
+  console.log('target.tagName:', e.target.tagName);
+
+  // 2) closest('tr')
+  const tr = e.target.closest('tr');
+  console.log('closest tr:', tr);
+  if (!tr) {
+    console.warn('—> tr не найден, выход');
+    console.groupEnd();
+    return;
+  }
+
+  // 3) Это внутри <tbody>?
+  const isInTbody = tr.parentNode && tr.parentNode.tagName.toLowerCase() === 'tbody';
+  console.log('tr.parentNode.tagName:', tr.parentNode.tagName, '| in tbody?', isInTbody);
+  if (!isInTbody) {
+    console.warn('—> клик не по строке тела таблицы, выход');
+    console.groupEnd();
+    return;
+  }
+
+  // 4) Состояние атрибута class ДО любых манипуляций
+  console.log('TR.hasAttribute("class") before:', tr.hasAttribute('class'));
+  console.log('TR.getAttribute("class") before:', JSON.stringify(tr.getAttribute('class')));
+  console.log('TR.classList before:', [...tr.classList]);
+
+  // 5) Если есть выделенная строка — снимем с неё класс
+  if (selectedRow && selectedRow !== tr) {
+    console.log('— Снимаем с предыдущей selectedRow:', selectedRow);
+    console.log('  classList before remove:', [...selectedRow.classList]);
+    selectedRow.classList.remove('highlighted-row');
+    console.log('  classList after remove :', [...selectedRow.classList]);
+    console.log('  outerHTML:', selectedRow.outerHTML);
+  }
+
+  // 6) Назначаем новую selectedRow
+  selectedRow = tr;
+  console.log('— Новая selectedRow =', selectedRow);
+
+  // 7) Заново логируем перед добавлением
+  console.log('TR.hasAttribute("class") now:', tr.hasAttribute('class'));
+  console.log('TR.getAttribute("class") now:', JSON.stringify(tr.getAttribute('class')));
+  console.log('TR.classList now         :', [...tr.classList]);
+
+  // 8) Добавляем класс
+  console.log('— Делем tr.classList.add("highlighted-row")');
+  tr.classList.add('highlighted-row');
+
+  // 9) Состояние ПОСЛЕ добавления
+  console.log('TR.hasAttribute("class") after:', tr.hasAttribute('class'));
+  console.log('TR.getAttribute("class") after:', JSON.stringify(tr.getAttribute('class')));
+  console.log('TR.classList after         :', [...tr.classList]);
+  console.log('TR.outerHTML               :', tr.outerHTML);
+
+  console.groupEnd();
+
+  // 10) Покажем меню
+  showMenu(tr, e.pageX, e.pageY);
+}
