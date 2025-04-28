@@ -313,3 +313,30 @@ echo json_encode($out);
 —
 
 Теперь по клику на «Посмотреть выполненные задания» откроется чёрно-белая модалка с таблицей из T_TS_MNLZ2_TASK25_END. Всё закрывается крестиком или кликом за её пределы.
+
+
+
+
+/* Кнопка «Посмотреть выполненные задания» */
+#showCompletedBtn {
+  position: fixed;          /* всегда фиксированно в окне */
+  top: 20px;                /* отступ от верха */
+  right: 20px;              /* отступ от правого края */
+  background: #fff;         /* белый фон */
+  color: #000;              /* чёрный текст */
+  border: 1px solid #000;   /* тонкая чёрная рамка */
+  border-radius: 6px;       /* скруглённые углы */
+  padding: 8px 16px;        /* внутренние отступы */
+  font-size: 16px;          /* удобочитаемый размер */
+  font-weight: 600;
+  cursor: pointer;          
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  z-index: 1100;            /* поверх всего */
+  transition: background .2s, color .2s;
+}
+
+#showCompletedBtn:hover {
+  background: #000;         /* при наведении — чёрный фон */
+  color: #fff;              /* и белый текст */
+}
+
