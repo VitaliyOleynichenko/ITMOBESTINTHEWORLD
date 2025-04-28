@@ -1,102 +1,72 @@
 <?php
-// api/finish.php
-
-// Показываем все ошибки (уберите в продакшене)
+header('Content-Type: application/json');
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
-// CORS и тип ответа
-header('Content-Type: application/json; charset=utf-8');
-
-// Подключение к ораклу
-require __DIR__ . '/../db_connect.php';  // поправьте путь, если надо
-
-// Получаем данные из тела запроса
-$payload = json_decode(file_get_contents('php://input'), true);
-
-if (
-    !isset($payload['ID_SEQ']) ||
-    !isset($payload['DATNZ']) ||
-    !isset($payload['NNZ'])
-) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Missing required key fields']);
-    exit;
+// 1) читаем сырой JSON
+$input = json_decode(file_get_contents('php://input'), true);
+if (!is_array($input)) {
+  echo json_encode(['error'=>'Неверный JSON']);
+  exit;
 }
 
-$idSeq  = $payload['ID_SEQ'];
-$datnz  = $payload['DATNZ'];  // ожидаем формат 'YYYY-MM-DD'
-$nnz    = $payload['NNZ'];
+// 2) пытаемся достать ключи в любом регистре
+$id_seq = $input['ID_SEQ']   ?? $input['id_seq']   ?? null;
+$datnz  = $input['DATNZ']    ?? $input['datnz']    ?? null;
+$nnz    = $input['NNZ']      ?? $input['nnz']      ?? null;
+$ocher  = $input['OCHER']    ?? $input['ocher']    ?? null;
 
-$conn = oci_connect($db_user, $db_pass, $db_conn_str, 'AL32UTF8');
+if (!$id_seq || !$datnz || !$nnz) {
+  echo json_encode(['error'=>'Missing required key fields']);
+  exit;
+}
+
+// 3) соединяемся с БД
+require_once __DIR__.'/db_connect.php';
+$conn = oci_connect($user, $pass, $connection_string);
 if (!$conn) {
-    $e = oci_error();
-    http_response_code(500);
-    echo json_encode(['error' => $e['message']]);
-    exit;
+  $e = oci_error();
+  echo json_encode(['error'=>$e['message']]);
+  exit;
 }
 
-// 1) Вставляем запись в архивную таблицу END
-$sqlInsert = <<<SQL
-INSERT INTO TS.T_TS_MNLZ2_TASK25_END
-  (ID_SEQ, DATNZ, NNZ, OCHER,
-   POSITION, PRIORITY, STATUS, MARKED_COUNT,
-   KDMR, NMMR, TLOT, SHOT,
-   KOL1P, DZAG1, DZAG2, KRAT,
-   PRP, DLOT, GSMR, GST1,
-   NLET, DLET, SPZ, PRIM)
-SELECT
-   ID_SEQ, DATNZ, NNZ, OCHER,
-   POSITION, PRIORITY, STATUS, MARKED_COUNT,
-   KDMR, NMMR, TLOT, SHOT,
-   KOL1P, DZAG1, DZAG2, KRAT,
-   PRP, DLOT, GSMR, GST1,
-   NLET, DLET, SPZ, PRIM
-  FROM TS.T_TS_MNLZ2_TASK25
- WHERE ID_SEQ = :id_seq
-   AND DATNZ  = TO_DATE(:datnz, 'YYYY-MM-DD')
-   AND NNZ    = :nnz
-SQL;
-
-$stid = oci_parse($conn, $sqlInsert);
-oci_bind_by_name($stid, ':id_seq', $idSeq);
-oci_bind_by_name($stid, ':datnz',  $datnz);
-oci_bind_by_name($stid, ':nnz',    $nnz);
-$r = oci_execute($stid, OCI_NO_AUTO_COMMIT);
-if (!$r) {
-    $e = oci_error($stid);
-    oci_rollback($conn);
-    http_response_code(500);
-    echo json_encode(['error' => $e['message']]);
-    exit;
+// 4) удаляем из основной таблицы
+$sqlDel = "
+  DELETE FROM TS.T_TS_MNLZ2_TASK25
+   WHERE ID_SEQ = :id_seq
+     AND DATNZ  = TO_DATE(:datnz,'YYYY-MM-DD')
+     AND NNZ    = :nnz
+";
+$st = oci_parse($conn, $sqlDel);
+oci_bind_by_name($st, ':id_seq', $id_seq);
+oci_bind_by_name($st, ':datnz',  $datnz);
+oci_bind_by_name($st, ':nnz',    $nnz);
+if (!oci_execute($st, OCI_COMMIT_ON_SUCCESS)) {
+  $e = oci_error($st);
+  echo json_encode(['error'=>$e['message']]);
+  exit;
 }
 
-// 2) Удаляем её из основной таблицы
-$sqlDelete = <<<SQL
-DELETE FROM TS.T_TS_MNLZ2_TASK25
- WHERE ID_SEQ = :id_seq
-   AND DATNZ  = TO_DATE(:datnz, 'YYYY-MM-DD')
-   AND NNZ    = :nnz
-SQL;
-
-$stid2 = oci_parse($conn, $sqlDelete);
-oci_bind_by_name($stid2, ':id_seq', $idSeq);
-oci_bind_by_name($stid2, ':datnz',  $datnz);
-oci_bind_by_name($stid2, ':nnz',    $nnz);
-$r2 = oci_execute($stid2, OCI_NO_AUTO_COMMIT);
-if (!$r2) {
-    $e = oci_error($stid2);
-    oci_rollback($conn);
-    http_response_code(500);
-    echo json_encode(['error' => $e['message']]);
-    exit;
+// 5) вставляем в таблицу ­_END
+$sqlIns = "
+  INSERT INTO TS.T_TS_MNLZ2_TASK25_END
+    (ID_SEQ, DATNZ, NNZ, OCHER)
+  VALUES
+    (:id_seq,
+     TO_DATE(:datnz,'YYYY-MM-DD'),
+     :nnz,
+     :ocher)
+";
+$st2 = oci_parse($conn, $sqlIns);
+oci_bind_by_name($st2, ':id_seq', $id_seq);
+oci_bind_by_name($st2, ':datnz',  $datnz);
+oci_bind_by_name($st2, ':nnz',    $nnz);
+oci_bind_by_name($st2, ':ocher',  $ocher);
+if (!oci_execute($st2, OCI_COMMIT_ON_SUCCESS)) {
+  $e = oci_error($st2);
+  echo json_encode(['error'=>$e['message']]);
+  exit;
 }
 
-// 3) Фиксим транзакцию
-oci_commit($conn);
-oci_free_statement($stid);
-oci_free_statement($stid2);
+echo json_encode(['success'=>true]);
 oci_close($conn);
-
-// 4) Отправляем успешный ответ
-echo json_encode(['success' => true, 'moved' => 1]);
