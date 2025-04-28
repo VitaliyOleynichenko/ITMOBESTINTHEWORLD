@@ -564,3 +564,77 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+
+
+
+
+
+
+<?php
+// api/get_completed.php
+
+header('Content-Type: application/json; charset=UTF-8');
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+// 1) Подключаемся к БД
+require_once __DIR__ . '/db_connect.php';
+$conn = oci_connect($user, $pass, $connection_string);
+if (!$conn) {
+    $e = oci_error();
+    http_response_code(500);
+    echo json_encode(['error' => $e['message']]);
+    exit;
+}
+
+// 2) Собираем запрос на все поля
+$sql = "
+SELECT
+  ID_SEQ,
+  TO_CHAR(DATNZ, 'YYYY-MM-DD') AS DATNZ,
+  NNZ,
+  OCHER,
+  POSITION,
+  PRIORITY,
+  STATUS,
+  MARKED_COUNT,
+  KDMR,
+  NMMR,
+  TLOT,
+  SHOT,
+  KOL1P,
+  DZAG1,
+  DZAG2,
+  KRAT,
+  DLOT,
+  GSMR,
+  GST1,
+  NLET,
+  TO_CHAR(DLET, 'YYYY-MM-DD') AS DLET,
+  SPZ,
+  PRIM
+FROM TS.T_TS_MNLZ2_TASK25_END
+ORDER BY DATNZ DESC, NNZ, OCHER, ID_SEQ
+";
+
+$stid = oci_parse($conn, $sql);
+if (!oci_execute($stid)) {
+    $e = oci_error($stid);
+    http_response_code(500);
+    echo json_encode(['error' => $e['message']]);
+    exit;
+}
+
+// 3) Собираем в массив
+$out = [];
+while ($row = oci_fetch_assoc($stid)) {
+    $out[] = $row;
+}
+
+oci_free_statement($stid);
+oci_close($conn);
+
+// 4) Отдаём JSON
+echo json_encode($out, JSON_UNESCAPED_UNICODE);
+
+
