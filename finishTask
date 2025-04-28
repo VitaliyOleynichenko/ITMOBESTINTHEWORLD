@@ -121,3 +121,195 @@ if (!oci_execute($st2, OCI_COMMIT_ON_SUCCESS)) {
 echo json_encode(['success' => true]);
 
 oci_close($conn);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1. HTML-разметка
+Вшиваем в ваш шаблон (например, рядом с таблицей):
+
+html
+Копировать
+Редактировать
+<!-- Кнопка вызова модалки -->
+<button id="showCompletedBtn" class="btn">Посмотреть выполненные задания</button>
+
+<!-- Модальное окно -->
+<div id="completedModal" class="modal">
+  <div class="modal-content">
+    <span class="modal-close">&times;</span>
+    <h2>Выполненные задания</h2>
+    <div class="modal-body">
+      <table id="completedTable">
+        <thead>
+          <tr>
+            <th>№</th>
+            <th>ID_SEQ</th>
+            <th>Дата</th>
+            <th>NNZ</th>
+            <th>Очередность</th>
+            <!-- добавьте нужные колонки -->
+          </tr>
+        </thead>
+        <tbody>
+          <!-- сюда придут строки из JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+2. CSS (чёрно-белый стиль)
+css
+Копировать
+Редактировать
+/* --- МОДАЛЬНОЕ ОКНО --- */
+.modal {
+  display: none;          /* скрыто по умолчанию */
+  position: fixed;
+  z-index: 1000;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.8);
+}
+.modal-content {
+  background: #fff;
+  color: #000;
+  margin: 5% auto;
+  padding: 20px;
+  border-radius: 6px;
+  width: 80%;
+  max-width: 800px;
+}
+.modal-close {
+  float: right;
+  font-size: 28px;
+  cursor: pointer;
+}
+.modal-close:hover {
+  color: #f00;
+}
+
+/* таблица внутри */
+#completedTable {
+  border-collapse: collapse;
+  width: 100%;
+}
+#completedTable th,
+#completedTable td {
+  border: 1px solid #000;
+  padding: 8px;
+  text-align: left;
+}
+#completedTable thead {
+  background: #000;
+  color: #fff;
+}
+#completedTable tbody tr:nth-child(even) {
+  background: #f4f4f4;
+}
+3. JavaScript
+js
+Копировать
+Редактировать
+document.addEventListener('DOMContentLoaded', ()=> {
+  const btn = document.getElementById('showCompletedBtn');
+  const modal = document.getElementById('completedModal');
+  const closeBtn = modal.querySelector('.modal-close');
+  const tbody = document.querySelector('#completedTable tbody');
+
+  // открыть
+  btn.addEventListener('click', async () => {
+    // очистить старые данные
+    tbody.innerHTML = '';
+    // получить данные
+    try {
+      const resp = await fetch('api/get_completed.php');
+      if (!resp.ok) throw new Error(resp.statusText);
+      const data = await resp.json();
+      // заполняем таблицу
+      data.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${idx + 1}</td>
+          <td>${row.ID_SEQ}</td>
+          <td>${row.DATNZ}</td>
+          <td>${row.NNZ}</td>
+          <td>${row.OCHER}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      modal.style.display = 'block';
+    } catch (e) {
+      console.error('Ошибка загрузки выполненных заданий', e);
+      alert('Не удалось загрузить выполненные задания');
+    }
+  });
+
+  // закрыть крестиком
+  closeBtn.addEventListener('click', ()=> {
+    modal.style.display = 'none';
+  });
+  // закрыть кликом по фону
+  modal.addEventListener('click', e => {
+    if (e.target === modal) modal.style.display = 'none';
+  });
+});
+4. api/get_completed.php
+php
+Копировать
+Редактировать
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+// подключаемся
+require_once __DIR__ . '/db_connect.php';
+$conn = oci_connect($user, $pass, $connection_string);
+if (!$conn) {
+  $e = oci_error();
+  echo json_encode(['error' => $e['message']]);
+  exit;
+}
+
+// выбираем выполненные из таблицы _END
+$sql = "
+  SELECT
+    ID_SEQ,
+    TO_CHAR(DATNZ, 'YYYY-MM-DD') AS DATNZ,
+    NNZ,
+    OCHER
+  FROM TS.T_TS_MNLZ2_TASK25_END
+  ORDER BY DATNZ, NNZ, OCHER, ID_SEQ
+";
+$stid = oci_parse($conn, $sql);
+oci_execute($stid);
+
+$out = [];
+while ($row = oci_fetch_assoc($stid)) {
+  $out[] = $row;
+}
+
+oci_free_statement($stid);
+oci_close($conn);
+
+echo json_encode($out);
+—
+
+Теперь по клику на «Посмотреть выполненные задания» откроется чёрно-белая модалка с таблицей из T_TS_MNLZ2_TASK25_END. Всё закрывается крестиком или кликом за её пределы.
