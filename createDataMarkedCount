@@ -1,0 +1,118 @@
+/**
+ * 1) Формируем массив заготовок для ручья 
+ *    на основании текущей длины ручья (dataRuchej.rych)
+ *    и параметров каждого заказа из tableInf.
+ *    Возвращаем новый массив dataRuchej.
+ */
+function createData() {
+  // 1.1. Сохраняем оригинальные остатки, чтобы потом их восстановить
+  const originalRemaining = tableInf.map(o => o.remaining);
+
+  // 1.2. Составляем локальные поля у каждого заказа:
+  tableInf.forEach(o => {
+    // сколько всего нужно заготовок
+    o.need     = Number(o.KOL1P)  || 0;
+    // сколько уже «нарезано» (факт)
+    o.cut      = Number(o.DLOT)   || 0;
+    // сколько уже «размечено» (предыдущее значение)
+    o.marked   = Number(o.marked_count) || 0;
+    // длина одной заготовки
+    o.slabLen  = Number(o.SHOT)   || 0;
+    // кратность (сколько заготовок в одном «пачечной» резке)
+    o.kratLen  = Number(o.KRAT)   || 0;
+    // остаток, который ещё нужно разметить
+    o.remaining = o.need - o.cut - o.marked;
+  });
+
+  // 1.3. Текущая длина ручья
+  let riverLen = Number(dataRuchej.rych) || 0;
+
+  // 1.4. Генерируем массив заготовок slabs
+  const slabRuchejArray = [];
+  for (let order of tableInf) {
+    // если ручей короче одной заготовки — вставляем «частичный»
+    if (riverLen > 0 && riverLen < order.slabLen) {
+      slabRuchejArray.unshift({
+        id:       'p_new',                // спец-метка
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav   // номер плавки
+      });
+      break;
+    }
+
+    // пока в текущем заказе ещё можно «впихнуть» целую заготовку
+    while (riverLen >= order.slabLen && order.remaining > 0) {
+      slabRuchejArray.unshift({
+        id:      order.ID_SEQ,
+        krat:    order.kratLen,
+        queue:   order.POSITION,
+        length:  order.slabLen,
+        kratLen: order.kratLen,
+        number:  dataRuchej.numberPlav
+      });
+      riverLen -= order.slabLen;
+      order.remaining--;
+    }
+
+    // если после этого остался ещё кусок ручья, меньше чем slabLen
+    if (riverLen > 0 && order.remaining >= 0) {
+      slabRuchejArray.unshift({
+        id:       'p_new',
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav
+      });
+      break;
+    }
+  }
+
+  // 1.5. Восстанавливаем оригинальные остатки в tableInf
+  tableInf.forEach((o,i) => {
+    o.remaining = originalRemaining[i];
+  });
+
+  // 1.6. Обновлённый массив ручья
+  dataRuchej = slabRuchejArray;
+  return dataRuchej;
+}
+
+
+/**
+ * 2) Считаем, сколько заготовок из dataRuchej «принадлежит» каждому заказу,
+ *    и пишем это в tableInf[i].marked_count
+ */
+function markedCount(dataRuchej) {
+  // 2.1. Собираем счётчики по ID_SEQ
+  const counts = {};
+  for (let slab of dataRuchej) {
+    if (slab.id === 'p_new') continue;
+    counts[slab.id] = (counts[slab.id] || 0) + 1;
+  }
+
+  // 2.2. Обновляем tableInf
+  tableInf.forEach(o => {
+    const id = o.ID_SEQ;
+    if (counts[id]) {
+      o.marked_count = counts[id];
+    } else {
+      o.marked_count = 0;
+    }
+    // при желании можно здесь же обновить остаток:
+    // o.remaining = o.need - o.cut - o.marked_count;
+  });
+}
+
+
+
+
+
+
+
+
+
+          
