@@ -550,4 +550,207 @@ function createData() {
 
 
 
-          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * 1) Формируем массив заготовок для ручья 
+ *    на основании текущей длины ручья (dataRuchej.rych)
+ *    и параметров каждого заказа из tableInf.
+ *    Возвращаем новый массив dataRuchej (список slabsRuchej).
+ */
+function createData() {
+  console.groupCollapsed('▶ createData START');
+
+  // 1. Нормализация и расчёт локальных полей у каждого заказа
+  tableInf.forEach((o, idx) => {
+    const needRaw      = o.KOL1P        ?? o.kol1p       ?? 0;
+    const cutRaw       = o.CUT_COUNT    ?? o.cut_count   ?? 0;
+    const markedRaw    = o.MARKED_COUNT ?? o.marked_count?? 0;
+    const slabRaw      = o.DZAG1        ?? o.dzag1       ?? 0;
+    const kratLenRaw   = o.DLOT         ?? o.dlot        ?? 0;
+    const kratCountRaw = o.KRAT         ?? o.krat        ?? 0;
+
+    o.need       = Number(needRaw)      || 0;   // всего нужно заготовок
+    o.cut        = Number(cutRaw)       || 0;   // уже отрезано (cut_count)
+    o.marked     = Number(markedRaw)    || 0;   // уже размечено
+    o.slabLen    = Number(slabRaw)      || 0;   // длина одной заготовки
+    o.kratLen    = Number(kratLenRaw)   || 0;   // длина «кратной» резки
+    o.kratCount  = Number(kratCountRaw) || 0;   // сколько заготовок в пачке
+    o.queue      = o.POSITION           ?? o.position ?? null; // номер очереди
+    o.remaining  = o.need - o.cut - o.marked;           // сколько ещё осталось разметить
+
+    console.log(
+      `Заказ[${idx}] ID_SEQ=${o.ID_SEQ||o.id_seq}:`,
+      `{ need:${o.need}, cut:${o.cut}, marked:${o.marked}, slabLen:${o.slabLen}, kratLen:${o.kratLen}, kratCount:${o.kratCount}, remaining:${o.remaining}, queue:${o.queue} }`
+    );
+  });
+
+  // 2. Сохраняем оригинальные remaining, чтобы восстановить в конце
+  const originalRemaining = tableInf.map(o => o.remaining);
+  console.log('originalRemaining:', originalRemaining);
+
+  // 3. Текущая длина ручья
+  let riverLen = Number(dataRuchej.rych) || 0;
+  console.log('Initial riverLen:', riverLen);
+
+  // 4. Генерация массива slabs
+  const slabRuchejArray = [];
+
+  generateData:
+  for (let i = 0; i < tableInf.length; i++) {
+    const order = tableInf[i];
+
+    // 4.1. Если ручей меньше одной заготовки, но >0 — один «частичный»
+    if (riverLen > 0 && riverLen < order.slabLen) {
+      slabRuchejArray.unshift({
+        id:       'p_new',
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav
+      });
+      console.log(`Partial slab START (p_new), length=${riverLen}`);
+      break generateData;
+    }
+
+    // 4.2. Полные заготовки, пока хватает длины и есть remaining
+    while (riverLen >= order.slabLen && order.remaining > 0) {
+      slabRuchejArray.unshift({
+        id:       order.ID_SEQ     ?? order.id_seq,
+        krat:     order.kratCount,
+        queue:    order.queue,
+        length:   order.slabLen,
+        kratLen:  order.kratLen,
+        number:   dataRuchej.numberPlav
+      });
+      riverLen -= order.slabLen;
+      order.remaining--;
+      console.log(
+        `Added slab for order ${order.ID_SEQ||order.id_seq}, ` +
+        `remaining=${order.remaining}, riverLen=${riverLen}`
+      );
+    }
+
+    // 4.3. В конце текущего заказа, если остался «хвост» ручья
+    if (riverLen > 0 && order.remaining >= 0) {
+      slabRuchejArray.unshift({
+        id:       'p_new',
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav
+      });
+      console.log(`Partial slab END (p_new), length=${riverLen}`);
+      break generateData;
+    }
+  }
+
+  // 5. Восстанавливаем оригинальные remaining
+  tableInf.forEach((o, i) => {
+    o.remaining = originalRemaining[i];
+  });
+  console.log('Restored remaining:', tableInf.map(o => o.remaining));
+
+  // 6. Итоговый лог и возврат
+  console.log(`▶ createData END — total slabs=${slabRuchejArray.length}`);
+  console.log('Resulting slabRuchejArray:', slabRuchejArray);
+  console.groupEnd();
+
+  dataRuchej = slabRuchejArray;
+  return dataRuchej;
+}
+
+
+/**
+ * 2) Считаем, сколько заготовок из dataRuchej «принадлежит» каждому заказу,
+ *    и записываем это в tableInf[i].marked_count
+ */
+function markedCount(dataRuchej) {
+  console.groupCollapsed('▶ markedCount START');
+
+  // 1. Собираем счётчики по ID
+  const counts = {};
+  console.log('Counting slabs per order in dataRuchej...');
+  for (let i = 0; i < dataRuchej.length && i < 100; i++) {
+    const slab = dataRuchej[i];
+    const id   = slab.id;
+    if (id === 'p_new') continue;       // пропускаем «спец»-заготовки
+    counts[id] = (counts[id] || 0) + 1;
+    console.log(`dataRuchej[${i}]: id=${id}, count so far=${counts[id]}`);
+  }
+  console.log('Final counts:', counts);
+
+  // 2. Обновляем tableInf
+  console.log('Updating tableInf[].marked_count...');
+  for (let i = 0; i < tableInf.length && i < 100; i++) {
+    const o     = tableInf[i];
+    const idKey = o.ID_SEQ ?? o.id_seq;
+    if (idKey === 'p_new') {
+      console.log(`tableInf[${i}]: id=p_new — пропускаем`);
+      continue;
+    }
+    o.marked_count = counts[idKey] || 0;
+    console.log(
+      `tableInf[${i}]: id=${idKey} — marked_count=${o.marked_count}`
+    );
+  }
+
+  console.groupEnd();
+}
+
