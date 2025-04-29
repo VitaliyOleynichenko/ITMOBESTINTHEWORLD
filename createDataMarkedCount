@@ -111,6 +111,26 @@ function markedCount(dataRuchej) {
 
 
 
+/**
+ * Класс одной «заготовки» ручья
+ */
+class SlabRuchej {
+  /**
+   * @param {string|number} id         — идентификатор заказа (ID_SEQ) или 'p_new'
+   * @param {number|null}   queue      — позиция/очередь (FIELD POSITION) или null
+   * @param {number}        length     — длина сегмента ручья (SHOT)
+   * @param {number}        kratCount  — кратность (KRAT)
+   * @param {string|number} numberPlav — номер плавки
+   */
+  constructor(id, queue, length, kratCount, numberPlav) {
+    this.id         = id;          // ID_SEQ заказа или 'p_new'
+    this.queue      = queue;       // позиция в очереди (null для «остаточных»)
+    this.length     = length;      // длина этого куска ручья
+    this.kratCount  = kratCount;   // кратность (сколько заготовок в этом куске)
+    this.numberPlav = numberPlav;  // номер плавки
+  }
+}
+
 
 
 
