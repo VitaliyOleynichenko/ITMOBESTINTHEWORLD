@@ -294,4 +294,132 @@ function markedCount(dataRuchej) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * 1) Формируем массив заготовок для ручья 
+ *    на основании текущей длины ручья (dataRuchej.rych)
+ *    и параметров каждого заказа из tableInf.
+ *    Возвращаем новый массив dataRuchej.
+ */
+function createData() {
+  console.groupCollapsed('▶ createData START');
+
+  // 1. Подготовка локальных переменных для каждого заказа
+  tableInf.forEach((o, idx) => {
+    // тут мы *нормализуем* поля из любого регистра:
+    const needRaw   = o.KOL1P    ?? o.kol1p    ?? 0;
+    const cutRaw    = o.DLOT     ?? o.dlot     ?? 0;
+    const markedRaw = o.marked_count ?? o.MARKED_COUNT ?? 0;
+    const slabRaw   = o.SHOT     ?? o.shot     ?? 0;
+    const kratRaw   = o.KRAT     ?? o.krat     ?? 0;
+
+    // и сразу переводим в числа:
+    o.need     = Number(needRaw)    || 0;
+    o.cut      = Number(cutRaw)     || 0;
+    o.marked   = Number(markedRaw)  || 0;
+    o.slabLen  = Number(slabRaw)    || 0;
+    o.kratLen  = Number(kratRaw)    || 0;
+    o.remaining = o.need - o.cut - o.marked;
+
+    console.log(
+      `Заказ ${idx} (ID_SEQ=${o.ID_SEQ||o.id_seq}) после подготовки:`,
+      `{ need:${o.need}, cut:${o.cut}, marked:${o.marked}, slabLen:${o.slabLen}, kratLen:${o.kratLen}, remaining:${o.remaining} }`
+    );
+  });
+
+  // 2. Сохраняем оригинальные остатки *после* того, как они появились
+  const originalRemaining = tableInf.map(o => o.remaining);
+  console.log('originalRemaining:', originalRemaining);
+
+  // 3. Текущая длина ручья
+  let riverLen = Number(dataRuchej.rych) || 0;
+  console.log('Initial riverLen:', riverLen);
+
+  // 4. Генерируем массив заготовок
+  const slabRuchejArray = [];
+
+  for (let order of tableInf) {
+    // часть, короче чем slabLen
+    if (riverLen > 0 && riverLen < order.slabLen) {
+      slabRuchejArray.unshift({
+        id:       'p_new',
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav
+      });
+      console.log('Добавили partial slab p_new:', riverLen);
+      break;
+    }
+
+    // целые заготовки
+    while (riverLen >= order.slabLen && order.remaining > 0) {
+      slabRuchejArray.unshift({
+        id:       order.ID_SEQ    ?? order.id_seq,
+        krat:     order.kratLen,
+        queue:    order.POSITION  ?? order.position,
+        length:   order.slabLen,
+        kratLen:  order.kratLen,
+        number:   dataRuchej.numberPlav
+      });
+      riverLen -= order.slabLen;
+      order.remaining--;
+      console.log(`Добавили slab of order ${order.ID_SEQ||order.id_seq}, осталось remaining=${order.remaining}, riverLen=${riverLen}`);
+    }
+
+    // остаток после заготовок
+    if (riverLen > 0 && order.remaining >= 0) {
+      slabRuchejArray.unshift({
+        id:       'p_new',
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav
+      });
+      console.log('После всех заказов добавили финальный partial:', riverLen);
+      break;
+    }
+  }
+
+  // 5. Восстанавливаем оригинальные остатки
+  tableInf.forEach((o, i) => {
+    o.remaining = originalRemaining[i];
+  });
+  console.log('После restore remaining:', tableInf.map(o=>o.remaining));
+
+  // 6. Финальный результат
+  console.log('▶ createData END — slabRuchejArray length=', slabRuchejArray.length);
+  console.groupEnd();
+
+  dataRuchej = slabRuchejArray;
+  return dataRuchej;
+}
+
+
+
+
           
