@@ -135,4 +135,163 @@ class SlabRuchej {
 
 
 
+
+
+
+
+
+
+
+
+
+/**
+ * 1) Формируем массив заготовок для ручья
+ *    на основании текущей длины ручья (dataRuchej.rych)
+ *    и параметров каждого заказа из tableInf.
+ *    Возвращаем новый массив dataRuchej.
+ */
+function createData() {
+  console.groupCollapsed('%ccreateData START', 'color: navy; font-weight: bold;');
+
+  // 1.1. Сохраняем оригинальные остатки
+  const originalRemaining = tableInf.map(o => o.remaining);
+  console.log('1.1 originalRemaining:', originalRemaining);
+
+  // 1.2. Подготовка полей у каждого заказа
+  tableInf.forEach((o, idx) => {
+    console.group(`Заказ ${idx} (ID_SEQ=${o.ID_SEQ}) до подготовки`);
+    console.log('исходный o:', JSON.parse(JSON.stringify(o)));
+
+    o.need      = Number(o.KOL1P)        || 0;
+    o.cut       = Number(o.DLOT)         || 0;
+    o.marked    = Number(o.marked_count) || 0;
+    o.slabLen   = Number(o.SHOT)         || 0;
+    o.kratLen   = Number(o.KRAT)         || 0;
+    o.remaining = o.need - o.cut - o.marked;
+
+    console.log('o.need      =', o.need);
+    console.log('o.cut       =', o.cut);
+    console.log('o.marked    =', o.marked);
+    console.log('o.slabLen   =', o.slabLen);
+    console.log('o.kratLen   =', o.kratLen);
+    console.log('o.remaining=', o.remaining);
+    console.groupEnd();
+  });
+
+  // 1.3. Текущая длина ручья
+  let riverLen = Number(dataRuchej.rych) || 0;
+  console.log('1.3 исходная dataRuchej.rych => riverLen =', riverLen);
+
+  // 1.4. Генерируем массив заготовок
+  const slabRuchejArray = [];
+  for (let idx = 0; idx < tableInf.length; idx++) {
+    const order = tableInf[idx];
+    console.group(`Обработка заказа ${idx} (ID_SEQ=${order.ID_SEQ})`);
+    console.log('текущий riverLen =', riverLen);
+    console.log('order.remaining =', order.remaining);
+
+    // частичный кусок если riverLen меньше slabLen
+    if (riverLen > 0 && riverLen < order.slabLen) {
+      console.log(`  ● riverLen < slabLen (${riverLen} < ${order.slabLen}), добавляем "p_new" кусок`);
+      slabRuchejArray.unshift({
+        id:       'p_new',
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav
+      });
+      console.log('  pushed:', slabRuchejArray[0]);
+      console.groupEnd();
+      break;
+    }
+
+    // целые заготовки
+    while (riverLen >= order.slabLen && order.remaining > 0) {
+      console.log(`  ● добавляем заготовку заказа, riverLen=${riverLen} >= slabLen=${order.slabLen}`);
+      const slab = {
+        id:       order.ID_SEQ,
+        krat:     order.kratLen,
+        queue:    order.POSITION,
+        length:   order.slabLen,
+        kratLen:  order.kratLen,
+        number:   dataRuchej.numberPlav
+      };
+      slabRuchejArray.unshift(slab);
+      console.log('  pushed:', slab);
+      riverLen -= order.slabLen;
+      order.remaining--;
+      console.log('  после: riverLen =', riverLen, ', order.remaining =', order.remaining);
+    }
+
+    // хвостовой кусок после исчерпания целых заготовок
+    if (riverLen > 0 && order.remaining >= 0) {
+      console.log(`  ● после заказа остался хвост riverLen=${riverLen}, добавляем "p_new"`);
+      const tail = {
+        id:       'p_new',
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav
+      };
+      slabRuchejArray.unshift(tail);
+      console.log('  pushed tail:', tail);
+      console.groupEnd();
+      break;
+    }
+
+    console.groupEnd();
+  }
+
+  // 1.5. Восстанавливаем оригинальные остатки
+  tableInf.forEach((o, i) => {
+    o.remaining = originalRemaining[i];
+  });
+  console.log('1.5 восстановили originalRemaining в tableInf');
+
+  // 1.6. Завершение
+  dataRuchej = slabRuchejArray;
+  console.log('1.6 итоговый slabRuchejArray:', slabRuchejArray);
+  console.groupEnd(); // createData END
+  return dataRuchej;
+}
+
+
+/**
+ * 2) Считаем, сколько заготовок из dataRuchej «принадлежит» каждому заказу,
+ *    и пишем это в tableInf[i].marked_count
+ */
+function markedCount(dataRuchej) {
+  console.groupCollapsed('%cmarkedCount START', 'color: darkgreen; font-weight: bold;');
+  console.log('2.1 входные dataRuchej:', dataRuchej);
+
+  // 2.1. Считаем по ID
+  const counts = {};
+  dataRuchej.forEach((slab, i) => {
+    console.log(` slab[${i}]:`, slab);
+    if (slab.id === 'p_new') {
+      console.log('  → пропускаем p_new');
+      return;
+    }
+    counts[slab.id] = (counts[slab.id] || 0) + 1;
+    console.log(`  → counts[${slab.id}] =`, counts[slab.id]);
+  });
+  console.log('2.1 итоговые counts:', counts);
+
+  // 2.2. Обновляем tableInf
+  tableInf.forEach((o, idx) => {
+    console.group(`Обновляем заказ ${idx} (ID_SEQ=${o.ID_SEQ})`);
+    const prev = o.marked_count;
+    o.marked_count = counts[o.ID_SEQ] || 0;
+    console.log('  previous marked_count =', prev);
+    console.log('  new marked_count      =', o.marked_count);
+    console.groupEnd();
+  });
+
+  console.groupEnd(); // markedCount END
+}
+
+
+
           
