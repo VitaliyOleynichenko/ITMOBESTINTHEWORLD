@@ -422,4 +422,132 @@ function createData() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * 1) Формируем массив заготовок для ручья 
+ *    на основании текущей длины ручья (dataRuchej.rych)
+ *    и параметров каждого заказа из tableInf.
+ *    Возвращаем новый массив dataRuchej.
+ */
+function createData() {
+  console.groupCollapsed('▶ createData START');
+
+  // 1. Нормализация и расчёт локальных полей
+  tableInf.forEach((o, idx) => {
+    const needRaw     = o.KOL1P       ?? o.kol1p       ?? 0;
+    const cutRaw      = o.CUT_COUNT   ?? o.cut_count   ?? 0;
+    const markedRaw   = o.marked_count?? o.MARKED_COUNT ?? 0;
+    const slabRaw     = o.DZAG1       ?? o.dzag1       ?? 0;
+    const kratLenRaw  = o.DLOT        ?? o.dlot        ?? 0;
+    const kratCountRaw= o.KRAT        ?? o.krat        ?? 0;
+
+    o.need       = Number(needRaw)      || 0;   // всего нужно
+    o.cut        = Number(cutRaw)       || 0;   // уже отрезано (cut_count)
+    o.marked     = Number(markedRaw)    || 0;   // уже размечено
+    o.slabLen    = Number(slabRaw)      || 0;   // длина одной заготовки
+    o.kratLen    = Number(kratLenRaw)   || 0;   // сколько длины идёт на одну «кратную» резку
+    o.kratCount  = Number(kratCountRaw) || 0;   // сколько заготовок в одной пачке
+    o.queue      = o.POSITION           ?? o.position ?? null; // номер очереди
+    o.remaining  = o.need - o.cut - o.marked;         // сколько ещё размечать
+
+    console.log(
+      `Заказ[${idx}] ID_SEQ=${o.ID_SEQ||o.id_seq}:`,
+      `{ need:${o.need}, cut:${o.cut}, marked:${o.marked}, slabLen:${o.slabLen}, kratLen:${o.kratLen}, kratCount:${o.kratCount}, remaining:${o.remaining}, queue:${o.queue} }`
+    );
+  });
+
+  // 2. Сохраняем оригинальные остатки
+  const originalRemaining = tableInf.map(o => o.remaining);
+  console.log('originalRemaining:', originalRemaining);
+
+  // 3. Текущая длина ручья
+  let riverLen = Number(dataRuchej.rych) || 0;
+  console.log('Initial riverLen:', riverLen);
+
+  // 4. Генерация массива slabs
+  const slabRuchejArray = [];
+
+  for (let order of tableInf) {
+    // частичный slab, если riverLen < slabLen, но > 0
+    if (riverLen > 0 && riverLen < order.slabLen) {
+      slabRuchejArray.unshift({
+        id:       'p_new',
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav
+      });
+      console.log('Partial slab p_new length=', riverLen);
+      break;
+    }
+
+    // полный slab, пока есть место в riverLen и remaining > 0
+    while (riverLen >= order.slabLen && order.remaining > 0) {
+      slabRuchejArray.unshift({
+        id:       order.ID_SEQ     ?? order.id_seq,
+        krat:     order.kratCount,
+        queue:    order.queue,
+        length:   order.slabLen,
+        kratLen:  order.kratLen,
+        number:   dataRuchej.numberPlav
+      });
+      riverLen -= order.slabLen;
+      order.remaining--;
+      console.log(
+        `Добавили slab для order ${order.ID_SEQ||order.id_seq}, `+
+        `осталось remaining=${order.remaining}, riverLen=${riverLen}`
+      );
+    }
+
+    // если остался хвостик после полного заполнения текущего заказа
+    if (riverLen > 0 && order.remaining >= 0) {
+      slabRuchejArray.unshift({
+        id:       'p_new',
+        krat:     0,
+        queue:    null,
+        length:   riverLen,
+        kratLen:  0,
+        number:   dataRuchej.numberPlav
+      });
+      console.log('Final partial slab after orders length=', riverLen);
+      break;
+    }
+  }
+
+  // 5. Восстанавливаем оригинальные remaining
+  tableInf.forEach((o, i) => {
+    o.remaining = originalRemaining[i];
+  });
+  console.log('Restored remaining:', tableInf.map(o=>o.remaining));
+
+  // 6. Итог
+  console.log('▶ createData END — total slabs=', slabRuchejArray.length);
+  console.groupEnd();
+
+  dataRuchej = slabRuchejArray;
+  return dataRuchej;
+}
+
+
+
           
