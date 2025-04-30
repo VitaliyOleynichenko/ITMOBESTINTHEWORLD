@@ -51,8 +51,12 @@ function createSlabElement(slabData) {
 }
 
 
+
 /**
- * 2) Функция для «отрисовки ручья» — принимает новый массив slabs из createData
+ * Рисует ручей на основании массива slabs из createData.
+ * Использует:
+ *   slabData.length — длина заготовки (для ширины)
+ *   slabData.krat   — число «краток» (для создания блоков .secSlab)
  */
 function paintRuchej(dataArray) {
   console.log('paintRuchej got array:', dataArray);
@@ -60,20 +64,24 @@ function paintRuchej(dataArray) {
   const ruchej = document.getElementById('Ruchej');
   const pNew   = document.getElementById('p_new');
 
-  // 1) Убираем старые заготовки
+  // 1) Удаляем старые заготовки
   ruchej.querySelectorAll('.primSlab').forEach(el => el.remove());
 
   // 2) Если нечего рисовать — выходим
   if (!dataArray || dataArray.length === 0) return;
 
-  // 3) Меняем ширину «нулевого» шаблона p_new в соответствии с первой заготовкой
-  pNew.style.width = `${dataArray[0].length / 23}px`;
+  // 3) Устанавливаем ширину шаблона p_new по первой заготовке
+  //    (используем dataArray[0].length, а не .krat)
+  const firstSlab = dataArray[0];
+  pNew.style.width = `${firstSlab.length / 23}px`;
+  console.log(`Set p_new width to ${firstSlab.length / 23}px`);
 
-  // 4) Добавляем все остальные заготовки
+  // 4) Прорисовываем все остальные заготовки
   for (let i = 1; i < dataArray.length; i++) {
     const slabInfo = dataArray[i];
-    console.log('  append slab:', slabInfo);
+    console.log(`Appending slab #${i}: length=${slabInfo.length}, krat=${slabInfo.krat}`);
     const slabEl = createSlabElement(slabInfo);
     ruchej.appendChild(slabEl);
   }
 }
+
