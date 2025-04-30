@@ -1,0 +1,79 @@
+/**
+ * 1) Функция для создания DOM-элемента «заготовки» (slab)
+ *    теперь работает с полями:
+ *      slabData.id       – ID заказа или 'p_new'
+ *      slabData.krat     – количество «краток» (секундных блоков)
+ *      slabData.queue    – номер очереди (или null)
+ *      slabData.length   – длина этой заготовки (число)
+ *      slabData.kratLen  – «длина» кратовой резки (не используется визуально)
+ *      slabData.number   – номер плавки
+ */
+function createSlabElement(slabData) {
+  console.log('createSlabElement:', slabData);
+
+  // Шаблонный скрытый <div id="p_new"></div>
+  const pNew = document.getElementById('p_new');
+  const primSlab = pNew.cloneNode(false);
+  primSlab.classList.remove('primSlab_new');
+  primSlab.classList.add('primSlab');
+
+  // Уникальный id для отладки
+  primSlab.id = [
+    slabData.queue,
+    slabData.krat,
+    slabData.length,
+    slabData.kratLen,
+    slabData.number
+  ].join('-');
+
+  // Первый блок с номером плавки/задачи
+  const firstSlab = document.createElement('div');
+  firstSlab.classList.add('firstSlab');
+  firstSlab.id          = `${slabData.number}-${slabData.queue}`;
+  firstSlab.textContent = `${slabData.number}-${slabData.queue}`;
+  primSlab.appendChild(firstSlab);
+
+  // Cоздаём по одному блоку .secSlab на каждую «кратку»
+  for (let i = 0; i < slabData.krat; i++) {
+    const secSlab = document.createElement('div');
+    secSlab.className = 'secSlab';
+    secSlab.id = `${slabData.queue}-${slabData.length}-${i+1}`;
+    // ширина каждого пропорциональна: делим 100% пополам на число крат
+    secSlab.style.width = `${100 / slabData.krat - 1}%`;
+    primSlab.appendChild(secSlab);
+  }
+
+  // И наконец — задаём ширину всего блока по длине заготовки
+  // (делим на 23, как раньше, чтобы получить «пиксели»)
+  primSlab.style.width = `${slabData.length / 23}px`;
+
+  return primSlab;
+}
+
+
+/**
+ * 2) Функция для «отрисовки ручья» — принимает новый массив slabs из createData
+ */
+function paintRuchej(dataArray) {
+  console.log('paintRuchej got array:', dataArray);
+
+  const ruchej = document.getElementById('Ruchej');
+  const pNew   = document.getElementById('p_new');
+
+  // 1) Убираем старые заготовки
+  ruchej.querySelectorAll('.primSlab').forEach(el => el.remove());
+
+  // 2) Если нечего рисовать — выходим
+  if (!dataArray || dataArray.length === 0) return;
+
+  // 3) Меняем ширину «нулевого» шаблона p_new в соответствии с первой заготовкой
+  pNew.style.width = `${dataArray[0].length / 23}px`;
+
+  // 4) Добавляем все остальные заготовки
+  for (let i = 1; i < dataArray.length; i++) {
+    const slabInfo = dataArray[i];
+    console.log('  append slab:', slabInfo);
+    const slabEl = createSlabElement(slabInfo);
+    ruchej.appendChild(slabEl);
+  }
+}
