@@ -1,0 +1,105 @@
+function createData() {
+  console.groupCollapsed('▶ createData START');
+
+  // 1) Подготовка: запоминаем остаток для восстановления
+  const originalRemaining = tableInf.map(o => o.remaining);
+  console.log('Original remaining:', originalRemaining);
+
+  // 2) Рассчитываем для каждого заказа need, cut, marked, slabLen, kratLen, kratCount, remaining
+  tableInf.forEach((o, idx) => {
+    o.need       = Number(o.KOL1P    ?? o.kol1p       ?? 0);
+    o.cut        = Number(o.CUT_COUNT ?? o.cut_count  ?? 0);
+    o.marked     = Number(o.marked_count ?? o.MARKED_COUNT ?? 0);
+    o.slabLen    = Number(o.DZAG1    ?? o.dzag1       ?? 0);
+    o.kratLen    = Number(o.DLOT     ?? o.dlot        ?? 0);
+    o.kratCount  = Number(o.KRAT     ?? o.krat        ?? 0);
+    o.queue      = o.POSITION       ?? o.position    ?? null;
+    o.remaining  = o.need - o.cut - o.marked;
+
+    console.log(`Order[${idx}] ID_SEQ=${o.ID_SEQ||o.id_seq}: remaining=${o.remaining}`);
+  });
+
+  // 3) Начинаем раскладку
+  let currentLength = Number(dataRuchej.rych) || 0;
+  console.log('Initial river length:', currentLength);
+
+  const slabRuchejArray = [];
+
+  // 4) Проходим по всем заказам, пока river имеет длину и заказы остались
+  for (let i = 0; i < tableInf.length && currentLength > 0; i++) {
+    const order = tableInf[i];
+    console.group(`Order[${i}] ID_SEQ=${order.ID_SEQ||order.id_seq}`);
+
+    // 4.1. Если остаток ручья меньше размерa заготовки — делаем один tail и выходим
+    if (currentLength > 0 && currentLength < order.slabLen) {
+      slabRuchejArray.unshift(new slabsRuchej(
+        'p_new', 0, null, currentLength, 0, dataRuchej.numberPlav
+      ));
+      console.log(`  Added tail slab p_new length=${currentLength}`);
+      currentLength = 0;
+      console.groupEnd();
+      break;
+    }
+
+    // 4.2. Кладём целые заготовки этого заказа
+    while (currentLength >= order.slabLen && order.remaining > 0) {
+      slabRuchejArray.unshift(new slabsRuchej(
+        order.ID_SEQ ?? order.id_seq,
+        order.kratCount,
+        order.queue,
+        order.slabLen,
+        order.kratLen,
+        dataRuchej.numberPlav
+      ));
+      currentLength -= order.slabLen;
+      order.remaining--;
+      console.log(`  Placed slab, now remaining=${order.remaining}, river=${currentLength}`);
+    }
+
+    console.groupEnd();
+  }
+
+  // 5) Если после обхода всех заказов ещё остался кусок river — добавим tail
+  if (currentLength > 0) {
+    slabRuchejArray.unshift(new slabsRuchej(
+      'p_new', 0, null, currentLength, 0, dataRuchej.numberPlav
+    ));
+    console.log(`After all orders added final tail p_new length=${currentLength}`);
+    currentLength = 0;
+  }
+
+  // 6) Восстанавливаем оригинальные remaining
+  tableInf.forEach((o, idx) => {
+    o.remaining = originalRemaining[idx];
+  });
+  console.log('Restored remaining:', tableInf.map(o => o.remaining));
+
+  console.log(`▶ createData END — total slabs=${slabRuchejArray.length}`);
+  console.log(slabRuchejArray);
+  console.groupEnd();
+
+  dataRuchej = slabRuchejArray;
+  return dataRuchej;
+}
+
+
+function markedCount(dataRuchej) {
+  console.groupCollapsed('▶ markedCount START');
+
+  const counts = {};
+  for (let i = 0; i < dataRuchej.length && i < 100; i++) {
+    const id = dataRuchej[i].id;
+    if (id === 'p_new') continue;
+    counts[id] = (counts[id] || 0) + 1;
+  }
+  console.log('Counts:', counts);
+
+  tableInf.forEach((o, idx) => {
+    const key = o.ID_SEQ ?? o.id_seq;
+    if (key === 'p_new') return;
+    o.marked_count = counts[key] || 0;
+    console.log(`Order[${idx}] ID_SEQ=${key} → marked_count=${o.marked_count}`);
+  });
+
+  console.groupEnd();
+}
