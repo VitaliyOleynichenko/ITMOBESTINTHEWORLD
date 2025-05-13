@@ -1,0 +1,292 @@
+1. Разметка в index.php
+html
+Копировать код
+<!-- ... ваша остальная страница ... -->
+
+<div class="plav-info">
+  <div id="actualNumberPlav">
+    <strong>Текущая плавка:</strong> <span class="loading">загрузка…</span>
+  </div>
+  <div id="nextNumberPlav">
+    <strong>Следующая плавка:</strong> <span class="loading">загрузка…</span>
+  </div>
+  <button id="showPlavStatusBtn">Статус плавок</button>
+</div>
+
+<!-- Модалка истории плавок -->
+<div class="modal" id="plavStatusModal">
+  <div class="modal-content">
+    <span class="modal-close" id="closePlavStatusModal">&times;</span>
+    <h2>Статус плавок</h2>
+    <table id="plavStatusTable">
+      <thead>
+        <tr>
+          <th>AGR</th>
+          <th>HEAT</th>
+          <th>STEELGRADE</th>
+          <th>DT_BEG</th>
+          <th>Статус</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- сюда придут строки -->
+      </tbody>
+    </table>
+  </div>
+</div>
+2. Стили (в ваш CSS-файл)
+css
+Копировать код
+.plav-info {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin: 20px 0;
+}
+.plav-info > div { font-size: 1.1em; }
+
+#showPlavStatusBtn {
+  padding: 6px 12px;
+  background: #000;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.modal {
+  display: none; /* по умолчанию скрыта */
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+}
+.modal-content {
+  background: #fff;
+  margin: 5% auto;
+  padding: 20px;
+  border-radius: 6px;
+  width: 90%;
+  max-width: 900px;
+  position: relative;
+}
+.modal-close {
+  position: absolute;
+  top: 10px; right: 14px;
+  font-size: 24px;
+  cursor: pointer;
+}
+#plavStatusTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+#plavStatusTable th,
+#plavStatusTable td {
+  border: 1px solid #999;
+  padding: 8px;
+  text-align: left;
+}
+#plavStatusTable thead {
+  background: #333;
+  color: #fff;
+}
+#plavStatusTable tbody tr:nth-child(even) {
+  background: #f4f4f4;
+}
+3. Новый API-эндпоинт api/get_current_plav.php
+php
+Копировать код
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+require_once __DIR__.'/../db_connect.php';
+
+$user = DB_USER;       // подставьте свои константы или переменные
+$pass = DB_PASS;
+$cs   = DB_CONNECTION_STRING;
+
+$conn = oci_connect($user, $pass, $cs);
+if (!$conn) {
+  echo json_encode(['error'=>'DB connect failed']);
+  exit;
+}
+
+// 1) Текущая плавка: AGR='МНЛЗ-2', DT_END IS NULL
+$sql = "
+  SELECT HEAT, STEELGRADE
+    FROM T_ESPC_HEAT_IN_WORK
+   WHERE AGR = 'МНЛЗ-2'
+     AND DT_END IS NULL
+";
+$stid = oci_parse($conn, $sql);
+oci_execute($stid);
+
+$row = oci_fetch_assoc($stid);
+if (!$row) {
+  echo json_encode(['heat'=>null,'steelgrade'=>null]);
+} else {
+  echo json_encode([
+    'heat'       => $row['HEAT'],
+    'steelgrade'=> $row['STEELGRADE']
+  ]);
+}
+
+oci_free_statement($stid);
+oci_close($conn);
+4. Новый API-эндпоинт api/get_next_plav.php
+php
+Копировать код
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+require_once __DIR__.'/../db_connect.php';
+
+$conn = oci_connect(DB_USER, DB_PASS, DB_CONNECTION_STRING);
+if (!$conn) { echo json_encode(['error'=>'DB connect failed']); exit; }
+
+// 2) Следующая плавка: AGR='УВС-1.1', DT_END IS NULL
+$sql = "
+  SELECT HEAT, STEELGRADE
+    FROM T_ESPC_HEAT_IN_WORK
+   WHERE AGR = 'УВС-1.1'
+     AND DT_END IS NULL
+";
+$stid = oci_parse($conn, $sql);
+oci_execute($stid);
+
+$row = oci_fetch_assoc($stid);
+echo json_encode([
+  'heat'       => $row['HEAT']        ?? null,
+  'steelgrade'=> $row['STEELGRADE'] ?? null
+]);
+
+oci_free_statement($stid);
+oci_close($conn);
+5. Новый API-эндпоинт api/get_plav_status.php
+php
+Копировать код
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+require_once __DIR__.'/../db_connect.php';
+
+$conn = oci_connect(DB_USER, DB_PASS, DB_CONNECTION_STRING);
+if (!$conn) { echo json_encode(['error'=>'DB connect failed']); exit; }
+
+$sql = "
+  SELECT AGR, HEAT, STEELGRADE,
+         TO_CHAR(DT_BEG,'YYYY-MM-DD') AS DT_BEG,
+         DT_END
+    FROM T_ESPC_HEAT_IN_WORK
+   ORDER BY DT_BEG DESC
+";
+$stid = oci_parse($conn, $sql);
+oci_execute($stid);
+
+$out = [];
+while ($r = oci_fetch_assoc($stid)) {
+  $out[] = [
+    'agr'        => $r['AGR'],
+    'heat'       => $r['HEAT'],
+    'steelgrade'=> $r['STEELGRADE'],
+    'dt_beg'     => $r['DT_BEG'],
+    'status'     => $r['DT_END'] ? 'завершена' : 'не выполнена'
+  ];
+}
+
+echo json_encode($out);
+
+oci_free_statement($stid);
+oci_close($conn);
+6. JavaScript для загрузки и управления модалкой
+js
+Копировать код
+document.addEventListener('DOMContentLoaded', () => {
+  loadCurrentPlav();
+  loadNextPlav();
+  document.getElementById('showPlavStatusBtn')
+          .addEventListener('click', showPlavStatus);
+  document.getElementById('closePlavStatusModal')
+          .addEventListener('click', () => {
+    document.getElementById('plavStatusModal').style.display = 'none';
+  });
+});
+
+async function loadCurrentPlav(){
+  const el = document.getElementById('actualNumberPlav');
+  try {
+    let resp = await fetch('api/get_current_plav.php');
+    let jsn  = await resp.json();
+    el.innerHTML = `<strong>Текущая плавка:</strong>
+                    ${jsn.heat||'—'} &mdash;
+                    марка: ${jsn.steelgrade||'—'}`;
+  } catch(e){
+    el.textContent = 'Ошибка загрузки';
+  }
+}
+
+async function loadNextPlav(){
+  const el = document.getElementById('nextNumberPlav');
+  try {
+    let resp = await fetch('api/get_next_plav.php');
+    let jsn  = await resp.json();
+    el.innerHTML = `<strong>Следующая плавка:</strong>
+                    ${jsn.heat||'—'} &mdash;
+                    марка: ${jsn.steelgrade||'—'}`;
+  } catch(e){
+    el.textContent = 'Ошибка загрузки';
+  }
+}
+
+async function showPlavStatus(){
+  const modal = document.getElementById('plavStatusModal');
+  const tbody = modal.querySelector('tbody');
+  tbody.innerHTML = '<tr><td colspan="5">Загрузка…</td></tr>';
+  modal.style.display = 'block';
+
+  try {
+    let resp = await fetch('api/get_plav_status.php');
+    let list = await resp.json();
+
+    tbody.innerHTML = '';
+    list.forEach(item => {
+      let tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${item.agr}</td>
+        <td>${item.heat}</td>
+        <td>${item.steelgrade}</td>
+        <td>${item.dt_beg}</td>
+        <td>${item.status}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch(e){
+    tbody.innerHTML = '<tr><td colspan="5">Ошибка при загрузке</td></tr>';
+  }
+}
+Что делать дальше
+Подложите эти три скрипта в папку api/.
+
+Скорректируйте в db_connect.php константы DB_USER, DB_PASS, DB_CONNECTION_STRING (или замените на переменные).
+
+Убедитесь, что ваш веб-сервер отдаёт PHP из папки api/ (URL http://…/api/get_current_plav.php должен возвращать JSON).
+
+После этого дивы с актуальной и следующей плавкой будут сами подтягиваться при загрузке, а по кнопке «Статус плавок» откроется модалка с таблицей истории. Если нужно его доработать под ваш шаблон дизайна — поправьте CSS .modal-content, размеры, font-size и т.д.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ChatGPT может допускать ошибки. Проверьте важную информацию. См. настройки cookie-файлов.
