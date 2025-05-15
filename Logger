@@ -1,168 +1,34 @@
-**Signal Logger Project**
+signal_log.txt.
 
-This project monitors the table `T_MNLZ2_SIGNAL` for the record with `ID = 355` and `DESCR = 'МГР1.Позиция.'`. It retrieves the `VAL` and `DT_SET` fields every 5 seconds and logs them to a text file and displays them in a web interface.
-
----
-
-# File Structure
-
-* `db_connect.php`
-  Contains Oracle DB connection: `$username`, `$password`, `$connection_string`, creates `$conn` via `oci_connect($username,$password,$connection_string,'AL32UTF8')`.
-
-* `logger.php`
-  A CLI/PHP script executed every 5 seconds (e.g., via cron or `watch`) that:
-
-  1. Queries `T_MNLZ2_SIGNAL` for row where `ID = 355 AND DESCR = 'МГР1.Позиция.'`:
-
-     ```sql
-     SELECT VAL, TO_CHAR(DT_SET,'YYYY-MM-DD HH24:MI:SS') AS DT_SET_STR
-       FROM T_MNLZ2_SIGNAL
-      WHERE ID = 355 AND DESCR = 'МГР1.Позиция.'
-     ```
-  2. Appends to log file `signal_log.txt`:
-
-     ```text
-     Дата и время: 2025-05-15 12:34:56  позиция мгр: 12345
-     ```
-
-* `signal_log.txt`
-  Plain text log, created alongside script, recorded entries.
-
-* `index.php`
-  Web page that reads `signal_log.txt` and displays the entries in an HTML list/table.
-
-* `style.css`
-  Basic styling for `index.php`.
-
-# Implementation Details
-
-## db\_connect.php
-
-```php
+bash
+Копировать код
+/project
+│
+├── db_connect.php
+├── index.php
+├── style.css
+├── signal_log.txt      ← (файл создаётся автоматически при первом запуске)
+└── api
+    ├── log_signal.php
+    └── get_signal_log.php
+1. /project/db_connect.php
+php
+Копировать код
 <?php
 // db_connect.php
 
-$username          = 'YOUR_DB_USER';
-$password          = 'YOUR_DB_PASS';
-$connection_string = 'HOST:1521/SERVICE';
+// Настройки подключения к Oracle
+$connection_string = 'HOST:1521/OPTIM';  // ваш хост:порт/SERVICE_NAME
+$username          = 'TS';               // ваше имя пользователя
+$password          = 'secret';           // ваш пароль
 
+// Подключаемся, указываем кодировку AL32UTF8 для перекодировки из CL8MSWIN1251 в UTF-8
 $conn = oci_connect($username, $password, $connection_string, 'AL32UTF8');
 if (!$conn) {
     $e = oci_error();
-    exit('DB connection failed: ' . htmlspecialchars($e['message']));
+    exit('Ошибка подключения к БД: ' . htmlspecialchars($e['message']));
 }
-```
-
-## logger.php
-
-```php
-<?php
-// logger.php - run every 5 seconds
-
-require __DIR__ . '/db_connect.php';
-
-// Query current value
-$sql = "SELECT VAL, TO_CHAR(DT_SET, 'YYYY-MM-DD HH24:MI:SS') AS DT_SET_STR
-          FROM T_MNLZ2_SIGNAL
-         WHERE ID = 355
-           AND DESCR = 'МГР1.Позиция.'";
-$stid = oci_parse($conn, $sql);
-ici_execute($stid);
-$row = oci_fetch_assoc($stid);
-oci_free_statement($stid);
-oci_close($conn);
-
-if ($row) {
-    $line = sprintf(
-      "Дата и время: %s  позиция мгр: %s\n",
-      $row['DT_SET_STR'],
-      $row['VAL']
-    );
-    file_put_contents(__DIR__ . '/signal_log.txt', $line, FILE_APPEND | LOCK_EX);
-}
-```
-
-## index.php
-
-```php
-<?php
-// index.php
-$logFile = __DIR__ . '/signal_log.txt';
-$entries = [];
-if (file_exists($logFile)) {
-    $entries = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-}
-?>
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <title>Signal Logger</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <h1>Лог значений МГР1.Позиция.</h1>
-  <table>
-    <thead>
-      <tr>
-        <th>#</th><th>Запись</th>
-      </tr>
-    </thead>
-    <tbody>
-      <?php foreach ($entries as $i => $line): ?>
-      <tr>
-        <td><?= $i+1 ?></td>
-        <td><?= htmlspecialchars($line) ?></td>
-      </tr>
-      <?php endforeach; ?>
-    </tbody>
-  </table>
-</body>
-</html>
-```
-
-## style.css
-
-```css
-body {
-  font-family: Arial, sans-serif;
-  margin: 20px;
-}
-h1 {
-  margin-bottom: 10px;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-th, td {
-  border: 1px solid #ccc;
-  padding: 8px;
-}
-th {
-  background: #f0f0f0;
-}
-```
-
-**Запуск**: настроить cron на `* * * * * php /path/to/logger.php` (каждые 1 минуту) или `watch -n 5 php logger.php`
-
----
-
-Теперь у вас есть **полный** проект: подключение, сбор данных, лог-файл и веб-интерфейс.
-
-
-Файл api/log_signal.php
-Этот скрипт при каждом вызове:
-
-Подключается к Oracle.
-
-Читает из T_MNLZ2_SIGNAL строку с ID = 355 и DESCR = 'МГР1.Позиция.'.
-
-Добавляет в конец файла signal_log.txt новую строку с форматом:
-
-yaml
-Копировать код
-Дата и время: 2025-05-15 12:34:56  позиция мгр: 12345
+2. /project/api/log_signal.php
 php
 Копировать код
 <?php
@@ -172,15 +38,10 @@ header('Content-Type: application/json; charset=UTF-8');
 ini_set('display_errors',1);
 error_reporting(E_ALL);
 
-// 1) Подключаемся к БД
+// 1) Подключаем БД
 require __DIR__ . '/../db_connect.php';
-if (!$conn) {
-  http_response_code(500);
-  echo json_encode(['error'=>'DB connect failed']);
-  exit;
-}
 
-// 2) Получаем текущее значение
+// 2) Запрашиваем последнее значение
 $sql = "
   SELECT VAL,
          TO_CHAR(DT_SET,'YYYY-MM-DD HH24:MI:SS') AS DT_SET_STR
@@ -190,14 +51,13 @@ $sql = "
 ";
 $stid = oci_parse($conn, $sql);
 oci_execute($stid);
-
 $row = oci_fetch_assoc($stid);
 oci_free_statement($stid);
 oci_close($conn);
 
 if (!$row) {
-  echo json_encode(['error'=>'No data']);
-  exit;
+    echo json_encode(['error'=>'Нет данных']);
+    exit;
 }
 
 // 3) Формируем строку лога
@@ -211,9 +71,27 @@ $line = sprintf(
 $logFile = __DIR__ . '/../signal_log.txt';
 file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
 
-// 5) Возвращаем запись клиенту
-echo json_encode(['logged' => $line], JSON_UNESCAPED_UNICODE);
-2. Файл index.php
+// 5) Отправляем ответ
+echo json_encode(['logged' => trim($line)], JSON_UNESCAPED_UNICODE);
+3. /project/api/get_signal_log.php
+php
+Копировать код
+<?php
+// api/get_signal_log.php
+
+header('Content-Type: application/json; charset=UTF-8');
+
+// Путь к файлу лога
+$logFile = __DIR__ . '/../signal_log.txt';
+$lines = [];
+
+if (file_exists($logFile)) {
+    // Читаем все непустые строки
+    $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+}
+
+echo json_encode($lines, JSON_UNESCAPED_UNICODE);
+4. /project/index.php
 php
 Копировать код
 <?php
@@ -228,23 +106,26 @@ php
 </head>
 <body>
 
-  <h1>Логи сигнала МГР1.Позиция.</h1>
-  <div id="status">Статус: <em>ожидание...</em></div>
+  <h1>Лог сигнала МГР1.Позиция.</h1>
+  <div id="status">Статус: <em>ожидание обновления...</em></div>
+
   <table id="logTable">
     <thead>
       <tr><th>#</th><th>Запись</th></tr>
     </thead>
     <tbody id="logBody">
-      <!-- сюда будем вставлять строки лога -->
+      <!-- сюда будут вставляться строки -->
     </tbody>
   </table>
 
   <script>
-  // 1) Функция — получить весь лог-файл и отрисовать
+  // Функция: загрузить весь лог и отрисовать
   async function loadLog() {
+    console.group('loadLog');
     try {
       const resp = await fetch('api/get_signal_log.php');
-      const lines = await resp.json(); // массив строк
+      const lines = await resp.json();
+      console.log('Получены строки лога:', lines);
       const tbody = document.getElementById('logBody');
       tbody.innerHTML = '';
       lines.forEach((line, idx) => {
@@ -252,70 +133,56 @@ php
         tr.innerHTML = `<td>${idx+1}</td><td>${line}</td>`;
         tbody.appendChild(tr);
       });
-      document.getElementById('status').textContent = 'Статус: данные обновлены';
-    } catch(e) {
-      console.error('Ошибка загрузки лога:', e);
-      document.getElementById('status').textContent = 'Статус: ошибка при загрузке';
+      document.getElementById('status').textContent = 'Статус: обновлено';
+    } catch (e) {
+      console.error('Ошибка loadLog:', e);
+      document.getElementById('status').textContent = 'Статус: ошибка загрузки';
     }
+    console.groupEnd();
   }
 
-  // 2) Функция — вызвать логгер и тут же обновить таблицу
+  // Функция: запросить логирование и после – обновить таблицу
   async function tick() {
+    console.group('tick');
     try {
-      console.group('Tick');
-      console.log('Запрашиваем логгирование…');
+      console.log('Запрос логирования…');
       const resp = await fetch('api/log_signal.php', { method:'POST' });
       const js = await resp.json();
       console.log('Ответ log_signal:', js);
-    } catch(e) {
+    } catch (e) {
       console.error('Ошибка log_signal:', e);
     }
     await loadLog();
     console.groupEnd();
   }
 
-  // 3) При загрузке страницы сразу подгружаем существующий лог
+  // Инициализация
   document.addEventListener('DOMContentLoaded', () => {
-    loadLog();
-    // и запускаем tick() каждые 5 секунд
-    setInterval(tick, 5000);
+    loadLog();           // сразу подгружаем существующие записи
+    setInterval(tick, 5000);  // каждые 5 секунд логируем + обновляем
   });
   </script>
+
 </body>
 </html>
-3. Файл api/get_signal_log.php
-Чтобы отображать в браузере уже записанные строки:
-
-php
-Копировать код
-<?php
-// api/get_signal_log.php
-
-header('Content-Type: application/json; charset=UTF-8');
-$logFile = __DIR__ . '/../signal_log.txt';
-$lines = [];
-
-if (file_exists($logFile)) {
-  // читаем все строки и убираем пустые
-  $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-}
-
-// возвращаем JSON-массив строк
-echo json_encode($lines, JSON_UNESCAPED_UNICODE);
-4. Файл style.css
+5. /project/style.css
 css
 Копировать код
+/* Общие стили */
 body {
   font-family: Arial, sans-serif;
   margin: 20px;
 }
 h1 {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 #status {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   font-style: italic;
+  color: #333;
 }
+
+/* Таблица лога */
 #logTable {
   width: 100%;
   border-collapse: collapse;
@@ -323,7 +190,7 @@ h1 {
 #logTable th,
 #logTable td {
   border: 1px solid #ccc;
-  padding: 6px 8px;
+  padding: 6px 10px;
 }
 #logTable thead {
   background: #f0f0f0;
@@ -331,16 +198,14 @@ h1 {
 #logTable tbody tr:nth-child(even) {
   background: #fafafa;
 }
-Как это работает
-Когда вы открываете index.php, клиентский JS сразу выполняет loadLog() и показывает уже имеющиеся записи.
+Как проверить
+Права на запись: убедитесь, что у веб-сервера есть права на создание и запись в /project/signal_log.txt.
 
-Затем каждую 5-ю секунду вызывается tick(), которое:
+Открыть в браузере: перейдите на http://ваш_домен/project/index.php.
 
-POST’ом зовёт api/log_signal.php → скрипт опрашивает БД и дописывает новую строчку в signal_log.txt.
+Наблюдать консоль (F12) — там будут выводиться группы loadLog и tick, а в статусе и таблице — актуальные данные.
 
-После этого — асинхронно — обновляет таблицу (loadLog()).
-
-Таким образом, пока у вас открыт index.php, каждые 5 секунд из БД будут сниматься данные и тут же показываться в браузере.
+Теперь при каждой 5-секундной итерации, пока открыта страница, будет опрашиваться БД, логироваться и отображаться в браузере.
 
 
 
@@ -357,4 +222,4 @@ POST’ом зовёт api/log_signal.php → скрипт опрашивает 
 
 
 
-ChatGPT может допускать ошибки. Проверьте важную информацию. См. настройки c
+ChatGPT может допускать ошибки. Проверьте важную информацию. См. н
