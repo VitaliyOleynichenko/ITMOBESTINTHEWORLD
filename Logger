@@ -318,6 +318,71 @@ h1 {
 
 
 
+<?php
+// api/log_signal.php
+
+header('Content-Type: application/json; charset=UTF-8');
+ini_set('display_errors',1);
+error_reporting(E_ALL);
+
+// 1) Подключаемся к БД
+require __DIR__ . '/../db_connect.php';
+if (!$conn) {
+    http_response_code(500);
+    echo json_encode(['error'=>'DB connect failed']);
+    exit;
+}
+
+// 2) Простое чтение даты и значения
+//    Убедитесь, что схема (TS) указана, если нужно:
+$sql = "
+  SELECT VAL,
+         DT_SET
+    FROM TS.T_MNLZ2_SIGNAL
+   WHERE ID    = 355
+     AND DESCR = 'МГР1.Позиция.'
+";
+$stid = oci_parse($conn, $sql);
+if (!oci_execute($stid)) {
+    $e = oci_error($stid);
+    http_response_code(500);
+    echo json_encode(['error'=>$e['message']]);
+    exit;
+}
+
+$row = oci_fetch_assoc($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+// 3) Если нет строки — возвращаем ошибку
+if (!$row) {
+    echo json_encode(['error'=>'No data']);
+    exit;
+}
+
+// 4) Приводим Oracle-дату к нужному формату в PHP
+//    $row['DT_SET'] обычно приходит как строка в NLS-формате, например "15-MAI-25"
+$phpTimestamp = strtotime($row['DT_SET']);
+if ($phpTimestamp === false) {
+    // Если strtotime не разобрал, попробуем явно через OCI-Lob или на всякий случай
+    $dtRaw = $row['DT_SET'];
+    // пробуем вручную: 
+    $formatted = $dtRaw; // fallback
+} else {
+    $formatted = date('Y-m-d H:i:s', $phpTimestamp);
+}
+
+// 5) Сохраняем в лог-файл
+$line = sprintf(
+  "Дата и время: %s  позиция мгр: %s\n",
+  $formatted,
+  $row['VAL']
+);
+$logFile = __DIR__ . '/../signal_log.txt';
+file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+
+// 6) Отправляем результат клиенту
+echo json_encode(['logged' => $line], JSON_UNESCAPED_UNICODE);
 
 
 
