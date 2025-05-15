@@ -390,4 +390,79 @@ echo json_encode(['logged' => $line], JSON_UNESCAPED_UNICODE);
 
 
 
+<?php
+// api/log_signal.php
+
+header('Content-Type: application/json; charset=UTF-8');
+ini_set('display_errors',1);
+error_reporting(E_ALL);
+
+// 1) Подключаемся к БД
+require __DIR__ . '/../db_connect.php';
+if (!$conn) {
+    http_response_code(500);
+    echo json_encode(['error'=>'DB connection failed']);
+    exit;
+}
+
+// 2) Запрашиваем все нужные ID
+$sql = "
+  SELECT ID,
+         VAL,
+         DT_SET
+    FROM TS.T_MNLZ2_SIGNAL
+   WHERE ID IN (355,364,361,370,376,393)
+";
+$stid = oci_parse($conn, $sql);
+if (!oci_execute($stid)) {
+    $e = oci_error($stid);
+    http_response_code(500);
+    echo json_encode(['error'=>$e['message']]);
+    exit;
+}
+
+// 3) Собираем результаты в массив [ID=>['val'=>..., 'dt'=>...]]
+$data = [];
+while ($row = oci_fetch_assoc($stid)) {
+    $data[(int)$row['ID']] = [
+        'val' => $row['VAL'],
+        'dt'  => $row['DT_SET']
+    ];
+}
+oci_free_statement($stid);
+oci_close($conn);
+
+// 4) Проверяем, что хотя бы позиция 355 есть
+if (!isset($data[355])) {
+    echo json_encode(['error'=>'No data for ID 355']);
+    exit;
+}
+
+// 5) Форматируем дату для 355
+$ts = strtotime($data[355]['dt']);
+$dt_str = $ts ? date('Y-m-d H:i:s', $ts) : $data[355]['dt'];
+
+// 6) Собираем итоговую строку
+$line = sprintf(
+  "Дата и время: %s  позиция мгр:%s, горелка1 привод старт:%s, горелка2 привод старт:%s, " .
+  "индикатор фактической длины:%s, длина слитка при разливке:%s, задание на порез:%s\n",
+  $dt_str,
+  $data[355]['val']  ?? 'N/A',
+  $data[364]['val']  ?? 'N/A',
+  $data[361]['val']  ?? 'N/A',
+  $data[370]['val']  ?? 'N/A',
+  $data[376]['val']  ?? 'N/A',
+  $data[393]['val']  ?? 'N/A'
+);
+
+// 7) Пишем в файл
+$logFile = __DIR__ . '/../signal_log.txt';
+file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+
+// 8) Возвращаем клиенту
+echo json_encode(['logged'=>$line], JSON_UNESCAPED_UNICODE);
+
+
+
+
 ChatGPT может допускать ошибки. Проверьте важную информацию. См. н
