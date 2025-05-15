@@ -208,6 +208,109 @@ h1 {
 Теперь при каждой 5-секундной итерации, пока открыта страница, будет опрашиваться БД, логироваться и отображаться в браузере.
 
 
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Signal Logger</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <h1>Логи сигнала МГР1.Позиция.</h1>
+  <div id="status">Статус: <em>ожидание...</em></div>
+  <table id="logTable">
+    <thead>
+      <tr><th>#</th><th>Запись</th></tr>
+    </thead>
+    <tbody id="logBody">
+      <!-- сюда вставляются строки -->
+    </tbody>
+  </table>
+
+  <script>
+  // ============== Функция чтения и отрисовки лога ==============
+  async function loadLog() {
+    console.group('loadLog');
+    console.log('Запрос get_signal_log.php…');
+    try {
+      const resp = await fetch('api/get_signal_log.php', { method: 'GET' });
+      console.log('HTTP статус:', resp.status, resp.statusText);
+      const lines = await resp.json();
+      console.log('Получили JSON:', lines);
+
+      const tbody = document.getElementById('logBody');
+      console.log('Очищаем старые <tbody>');
+      tbody.innerHTML = '';
+
+      if (!Array.isArray(lines)) {
+        console.warn('Ответ не массив, прекращаем отрисовку');
+        document.getElementById('status').textContent = 'Статус: ошибка формата лога';
+        console.groupEnd();
+        return;
+      }
+
+      lines.forEach((line, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${idx+1}</td><td>${line}</td>`;
+        tbody.appendChild(tr);
+      });
+      console.log(`Отрисовали ${lines.length} строк`);
+      document.getElementById('status').textContent = 'Статус: лог обновлён';
+    } catch (err) {
+      console.error('Ошибка в loadLog():', err);
+      document.getElementById('status').textContent = 'Статус: ошибка загрузки лога';
+    }
+    console.groupEnd();
+  }
+
+  // ============== Функция логирования нового значения ==============
+  async function logSignal() {
+    console.group('logSignal');
+    console.log('Запрос log_signal.php…');
+    try {
+      const resp = await fetch('api/log_signal.php', { method: 'POST' });
+      console.log('HTTP статус:', resp.status, resp.statusText);
+      const js = await resp.json();
+      console.log('Ответ log_signal.php:', js);
+      if (js.error) {
+        console.warn('API вернул ошибку:', js.error);
+      } else {
+        console.log('Запись добавлена:', js.logged);
+      }
+    } catch (err) {
+      console.error('Ошибка в logSignal():', err);
+    }
+    console.groupEnd();
+  }
+
+  // ============== Шаг тик ==============
+  async function tick() {
+    console.group('TICK');
+    console.time('tick-duration');
+    await logSignal();
+    await loadLog();
+    console.timeEnd('tick-duration');
+    console.groupEnd();
+  }
+
+  // ============== Инициализация при загрузке страницы ==============
+  document.addEventListener('DOMContentLoaded', () => {
+    console.group('Page Loaded');
+    console.log('Инициализация логгера');
+    loadLog().then(() => console.log('Первоначальная отрисовка лога завершена'));
+    // Запускаем каждый 5 секунд
+    setInterval(() => {
+      console.log('--- setInterval tick ---');
+      tick();
+    }, 5000);
+    console.groupEnd();
+  });
+  </script>
+</body>
+</html>
+
+
 
 
 
