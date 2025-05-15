@@ -1,0 +1,151 @@
+**Signal Logger Project**
+
+This project monitors the table `T_MNLZ2_SIGNAL` for the record with `ID = 355` and `DESCR = 'МГР1.Позиция.'`. It retrieves the `VAL` and `DT_SET` fields every 5 seconds and logs them to a text file and displays them in a web interface.
+
+---
+
+# File Structure
+
+* `db_connect.php`
+  Contains Oracle DB connection: `$username`, `$password`, `$connection_string`, creates `$conn` via `oci_connect($username,$password,$connection_string,'AL32UTF8')`.
+
+* `logger.php`
+  A CLI/PHP script executed every 5 seconds (e.g., via cron or `watch`) that:
+
+  1. Queries `T_MNLZ2_SIGNAL` for row where `ID = 355 AND DESCR = 'МГР1.Позиция.'`:
+
+     ```sql
+     SELECT VAL, TO_CHAR(DT_SET,'YYYY-MM-DD HH24:MI:SS') AS DT_SET_STR
+       FROM T_MNLZ2_SIGNAL
+      WHERE ID = 355 AND DESCR = 'МГР1.Позиция.'
+     ```
+  2. Appends to log file `signal_log.txt`:
+
+     ```text
+     Дата и время: 2025-05-15 12:34:56  позиция мгр: 12345
+     ```
+
+* `signal_log.txt`
+  Plain text log, created alongside script, recorded entries.
+
+* `index.php`
+  Web page that reads `signal_log.txt` and displays the entries in an HTML list/table.
+
+* `style.css`
+  Basic styling for `index.php`.
+
+# Implementation Details
+
+## db\_connect.php
+
+```php
+<?php
+// db_connect.php
+
+$username          = 'YOUR_DB_USER';
+$password          = 'YOUR_DB_PASS';
+$connection_string = 'HOST:1521/SERVICE';
+
+$conn = oci_connect($username, $password, $connection_string, 'AL32UTF8');
+if (!$conn) {
+    $e = oci_error();
+    exit('DB connection failed: ' . htmlspecialchars($e['message']));
+}
+```
+
+## logger.php
+
+```php
+<?php
+// logger.php - run every 5 seconds
+
+require __DIR__ . '/db_connect.php';
+
+// Query current value
+$sql = "SELECT VAL, TO_CHAR(DT_SET, 'YYYY-MM-DD HH24:MI:SS') AS DT_SET_STR
+          FROM T_MNLZ2_SIGNAL
+         WHERE ID = 355
+           AND DESCR = 'МГР1.Позиция.'";
+$stid = oci_parse($conn, $sql);
+ici_execute($stid);
+$row = oci_fetch_assoc($stid);
+oci_free_statement($stid);
+oci_close($conn);
+
+if ($row) {
+    $line = sprintf(
+      "Дата и время: %s  позиция мгр: %s\n",
+      $row['DT_SET_STR'],
+      $row['VAL']
+    );
+    file_put_contents(__DIR__ . '/signal_log.txt', $line, FILE_APPEND | LOCK_EX);
+}
+```
+
+## index.php
+
+```php
+<?php
+// index.php
+$logFile = __DIR__ . '/signal_log.txt';
+$entries = [];
+if (file_exists($logFile)) {
+    $entries = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+}
+?>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Signal Logger</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Лог значений МГР1.Позиция.</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Запись</th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($entries as $i => $line): ?>
+      <tr>
+        <td><?= $i+1 ?></td>
+        <td><?= htmlspecialchars($line) ?></td>
+      </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+</body>
+</html>
+```
+
+## style.css
+
+```css
+body {
+  font-family: Arial, sans-serif;
+  margin: 20px;
+}
+h1 {
+  margin-bottom: 10px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 8px;
+}
+th {
+  background: #f0f0f0;
+}
+```
+
+**Запуск**: настроить cron на `* * * * * php /path/to/logger.php` (каждые 1 минуту) или `watch -n 5 php logger.php`
+
+---
+
+Теперь у вас есть **полный** проект: подключение, сбор данных, лог-файл и веб-интерфейс.
