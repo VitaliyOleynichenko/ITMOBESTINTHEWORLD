@@ -1509,6 +1509,114 @@ Canvas-график:
 
 
 
+<?php
+// parse_log.php
+
+// Если форма не отправлена — показываем её
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    ?>
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+      <meta charset="UTF-8">
+      <title>Парсер логов в Excel (CSV)</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 30px; }
+        form { margin-bottom: 20px; }
+        input[type=file] { padding: 6px; }
+        input[type=submit] { padding: 8px 16px; }
+      </style>
+    </head>
+    <body>
+      <h1>Парсер логов в Excel</h1>
+      <p>Загрузите файл с логами (<em>signal_log.txt</em>) — вы получите CSV-файл для открытия в Excel.</p>
+      <form method="post" enctype="multipart/form-data">
+        <input type="file" name="logfile" accept=".txt" required>
+        <input type="submit" value="Преобразовать">
+      </form>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
+// Обработка загруженного файла
+if (!isset($_FILES['logfile']) || $_FILES['logfile']['error'] !== UPLOAD_ERR_OK) {
+    http_response_code(400);
+    echo "Ошибка загрузки файла.";
+    exit;
+}
+
+$path = $_FILES['logfile']['tmp_name'];
+$lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+if (!$lines) {
+    http_response_code(400);
+    echo "Файл пуст или не удалось прочитать.";
+    exit;
+}
+
+// Заголовки CSV
+$columns = [
+    'Дата и время',
+    'позиция_мгр',
+    'горелка1_привод_старт',
+    'горелка2_привод_старт',
+    'индикатор_фактической_длины',
+    'длина_слитка_при_разливке',
+    'задание_на_порез'
+];
+// Отправляем заголовки для скачивания CSV
+header('Content-Type: text/csv; charset=UTF-8');
+header('Content-Disposition: attachment; filename="parsed_signal_log.csv"');
+
+// Открываем вывод как поток CSV
+$out = fopen('php://output', 'w');
+// UTF-8 BOM для Excel
+fwrite($out, "\xEF\xBB\xBF");
+
+// Пишем заголовки
+fputcsv($out, $columns);
+
+// Функция парсинга одной строки
+function parse_log_line($line) {
+    // Дата и время
+    if (preg_match('/Дата и время:\s*([0-9\-:\s]+)/u', $line, $m)) {
+        $dt = trim($m[1]);
+    } else {
+        $dt = '';
+    }
+    // Функция для поиска по ID
+    $find = function($pattern) use($line) {
+        if (preg_match($pattern, $line, $m)) {
+            return $m[1];
+        }
+        return '';
+    };
+    return [
+        $dt,
+        // позиция мгр (ID=355)
+        $find('/позиция мгр:\s*(\d+)/u'),
+        // горелка1 привод старт (ID=364)
+        $find('/горелка1 привод старт:\s*(\d+)/u'),
+        // горелка2 привод старт (ID=361)
+        $find('/горелка2 привод старт:\s*(\d+)/u'),
+        // индикатор фактической длины (ID=370)
+        $find('/индикатор фактической длины:\s*(\d+)/u'),
+        // длина слитка при разливке (ID=376)
+        $find('/длина слитка при разливке:\s*(\d+)/u'),
+        // задание на порез (ID=393)
+        $find('/задание на порез:\s*(\d+)/u'),
+    ];
+}
+
+// Парсим и выводим каждую строку
+foreach ($lines as $line) {
+    $row = parse_log_line($line);
+    fputcsv($out, $row);
+}
+
+fclose($out);
+exit;
 
 
 
