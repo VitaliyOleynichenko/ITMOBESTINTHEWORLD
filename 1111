@@ -1016,7 +1016,242 @@ chart.css задаёт контейнер нужного размера и це�
 
 
 
+позиция мгр: 12345")
 
+php
+Копировать код
+<?php
+// api/get_signal_log.php
+
+header('Content-Type: application/json; charset=UTF-8');
+$logFile = __DIR__ . '/../signal_log.txt';
+$lines = [];
+
+if (file_exists($logFile)) {
+  $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+}
+
+echo json_encode($lines, JSON_UNESCAPED_UNICODE);
+2. index.php
+php
+Копировать код
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Signal Logger + График</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <h1>Логи сигнала МГР1.Позиция.</h1>
+  <div id="status">Статус: <em>ожидание...</em></div>
+
+  <table id="logTable">
+    <thead>
+      <tr><th>#</th><th>Запись</th></tr>
+    </thead>
+    <tbody id="logBody"></tbody>
+  </table>
+
+  <h2>График «позиции МГР»</h2>
+  <canvas id="signalChart" width="800" height="300"></canvas>
+
+  <script>
+  // === Парсер одной строки лога ===
+  function parseLine(line) {
+    // Ожидаем: "Дата и время: YYYY-MM-DD HH:MM:SS  позиция мгр: VALUE"
+    const dtMatch = line.match(/Дата и время:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+    const valMatch= line.match(/позиция мгр:\s*(\d+)/);
+    return {
+      time: dtMatch ? new Date(dtMatch[1]) : null,
+      value: valMatch ? Number(valMatch[1]) : null,
+      raw: line
+    };
+  }
+
+  // === Загружает и рисует таблицу и график ===
+  async function loadAndDraw() {
+    console.group('loadAndDraw');
+    try {
+      const resp = await fetch('api/get_signal_log.php');
+      console.log('Fetch status', resp.status);
+      const lines = await resp.json();
+      console.log('Получили строки:', lines);
+
+      // 1) Заполним таблицу
+      const tbody = document.getElementById('logBody');
+      tbody.innerHTML = '';
+      const data = []; // для графика
+      lines.forEach((line, i) => {
+        const p = parseLine(line);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td><td>${p.raw}</td>`;
+        tbody.appendChild(tr);
+        if (p.time && p.value !== null) data.push(p);
+      });
+      document.getElementById('status').textContent = 
+        `Статус: загружено ${data.length} точек`;
+
+      // 2) Нарисуем график
+      drawChart(data);
+    } catch(e) {
+      console.error('Ошибка loadAndDraw:', e);
+      document.getElementById('status').textContent = 'Статус: ошибка';
+    }
+    console.groupEnd();
+  }
+
+  // === Рисует простой линейный график в canvas ===
+  function drawChart(data) {
+    console.group('drawChart');
+    const canvas = document.getElementById('signalChart');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0,0,W,H);
+
+    if (data.length < 2) {
+      console.warn('Недостаточно точек для графика');
+      return;
+    }
+
+    // Находим мин/макс по времени и значению
+    const times = data.map(p=>p.time.getTime());
+    const vals  = data.map(p=>p.value);
+    const tMin  = Math.min(...times), tMax = Math.max(...times);
+    const vMin  = Math.min(...vals),  vMax = Math.max(...vals);
+
+    // Отступы
+    const margin = { top:20, bottom:30, left:50, right:20 };
+    const plotW = W - margin.left - margin.right;
+    const plotH = H - margin.top - margin.bottom;
+
+    // Функции масштабирования
+    const xScale = t => margin.left + ((t - tMin)/(tMax - tMin))*plotW;
+    const yScale = v => margin.top + plotH - ((v - vMin)/(vMax - vMin))*plotH;
+
+    // Оси
+    ctx.strokeStyle = '#000';
+    ctx.beginPath();
+    // Y-axis
+    ctx.moveTo(margin.left, margin.top);
+    ctx.lineTo(margin.left, margin.top + plotH);
+    // X-axis
+    ctx.moveTo(margin.left, margin.top + plotH);
+    ctx.lineTo(margin.left + plotW, margin.top + plotH);
+    ctx.stroke();
+
+    // Подписи по Y (значения)
+    ctx.fillStyle = '#000';
+    ctx.textAlign = 'right';
+    for (let i=0; i<=5; i++) {
+      const v = vMin + (vMax - vMin)*(i/5);
+      const y = yScale(v);
+      ctx.fillText(v.toFixed(0), margin.left-5, y+3);
+      ctx.beginPath();
+      ctx.moveTo(margin.left-3,y);
+      ctx.lineTo(margin.left,y);
+      ctx.stroke();
+    }
+
+    // Подписи по X (время)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (let i=0; i<=5; i++){
+      const t = tMin + (tMax-tMin)*(i/5);
+      const x = xScale(t);
+      const dt = new Date(t);
+      const label = dt.toTimeString().substr(0,5);
+      ctx.fillText(label, x, margin.top+plotH+5);
+      ctx.beginPath();
+      ctx.moveTo(x, margin.top+plotH);
+      ctx.lineTo(x, margin.top+plotH+3);
+      ctx.stroke();
+    }
+
+    // Линия графика
+    ctx.strokeStyle = 'blue';
+    ctx.beginPath();
+    data.forEach((p, idx) => {
+      const x = xScale(p.time.getTime());
+      const y = yScale(p.value);
+      if (idx === 0) ctx.moveTo(x,y);
+      else           ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    console.groupEnd();
+  }
+
+  // === Запуск ===
+  document.addEventListener('DOMContentLoaded', () => {
+    console.group('Page init');
+    loadAndDraw();
+    // обновляем каждые 5 секунд
+    setInterval(loadAndDraw, 5000);
+    console.groupEnd();
+  });
+  </script>
+</body>
+</html>
+3. style.css
+css
+Копировать код
+body {
+  font-family: Arial, sans-serif;
+  margin: 20px;
+}
+h1, h2 {
+  margin-bottom: 10px;
+}
+#status {
+  margin-bottom: 12px;
+  font-style: italic;
+}
+#logTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+#logTable th, #logTable td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+}
+#logTable thead {
+  background: #f0f0f0;
+}
+#logTable tbody tr:nth-child(even) {
+  background: #fafafa;
+}
+#signalChart {
+  border: 1px solid #999;
+  background: #fff;
+}
+Как это работает
+loadAndDraw() каждый 5 секунд подгружает логи (JSON) и заполняет таблицу.
+
+drawChart(data) рисует оси, подписи и соединяет точки чистым Canvas API.
+
+parseLine() извлекает дату и численное значение из вашей строки.
+
+Всё на “vanilla” JS и HTML5 Canvas — без единой внешней библиотеки. Теперь вы увидите не только табличный лог, но и график изменения «позиции МГР» во времени.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ChatGPT может допускать ошибки. Проверьте важную информацию. См. настройки co
 
 
 
