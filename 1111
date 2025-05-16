@@ -1250,7 +1250,276 @@ parseLine() извлекает дату и численное значение �
 
 
 
+запрашиваемым параметрам.
 
+1. api/get_signal_log.php
+(никаких изменений, он отдаёт массив строк уже в формате
+
+php
+Копировать код
+Дата и время: YYYY-MM-DD HH:MM:SS  позиция мгр:V355, горелка1 привод старт:V364, …, задание на порез:V393
+```)
+
+```php
+<?php
+// api/get_signal_log.php
+header('Content-Type: application/json; charset=UTF-8');
+$logFile = __DIR__ . '/../signal_log.txt';
+$lines = [];
+
+if (file_exists($logFile)) {
+  $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+}
+
+echo json_encode($lines, JSON_UNESCAPED_UNICODE);
+2. index.php
+php
+Копировать код
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Signal Logger + Multi-Chart</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <h1>Логи сигнала МГР1.Позиция. и прочих параметров</h1>
+  <div id="status">Статус: ожидание…</div>
+
+  <table id="logTable">
+    <thead>
+      <tr><th>#</th><th>Запись</th></tr>
+    </thead>
+    <tbody id="logBody"></tbody>
+  </table>
+
+  <h2>График всех параметров</h2>
+  <canvas id="signalChart" width="900" height="400"></canvas>
+
+  <script>
+  // Цвета для каждой кривой
+  const COLORS = {
+    p355: 'red',    // позиция МГР
+    p364: 'orange', // горелка1
+    p361: 'green',  // горелка2
+    p370: 'blue',   // индикатор длины
+    p376: 'purple', // длина слитка
+    p393: 'brown'   // задание на порез
+  };
+
+  // Парсим строку лога в объект {time:Date, vals:{p355:…,p364:…,...}, raw:…}
+  function parseLine(line) {
+    const timeMatch = line.match(/Дата и время:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+    const date = timeMatch ? new Date(timeMatch[1]) : null;
+    const vals = {};
+    ['355','364','361','370','376','393'].forEach(id=>{
+      const re = new RegExp(id=== '355'
+        ? `позиция мгр:\\s*(\\d+)`
+        : id==='364'
+          ? `горелка1 привод старт:\\s*(\\d+)`
+          : id==='361'
+            ? `горелка2 привод старт:\\s*(\\d+)`
+            : id==='370'
+              ? `индикатор фактической длины:\\s*(\\d+)`
+              : id==='376'
+                ? `длина слитка при разливке:\\s*(\\d+)`
+                : `задание на порез:\\s*(\\d+)`
+      );
+      const m = line.match(re);
+      vals['p'+id] = m ? Number(m[1]) : null;
+    });
+    return { time: date, vals, raw: line };
+  }
+
+  // Загрузка лога и обновление таблицы + графика
+  async function loadAndDraw() {
+    console.group('loadAndDraw');
+    try {
+      const resp = await fetch('api/get_signal_log.php');
+      console.log('fetch status', resp.status);
+      const lines = await resp.json();
+      console.log('lines:', lines);
+
+      // Таблица
+      const tbody = document.getElementById('logBody');
+      tbody.innerHTML = '';
+      const data = [];
+      lines.forEach((ln,i) => {
+        const p = parseLine(ln);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td><td>${p.raw}</td>`;
+        tbody.appendChild(tr);
+        if (p.time) data.push(p);
+      });
+      document.getElementById('status').textContent = 
+        `Статус: загружено ${data.length} точек`;
+
+      // Рисуем многокривую
+      drawChart(data);
+    } catch(e) {
+      console.error('Ошибка loadAndDraw:', e);
+      document.getElementById('status').textContent = 'Статус: ошибка';
+    }
+    console.groupEnd();
+  }
+
+  // Рисуем все кривые
+  function drawChart(data) {
+    console.group('drawChart');
+    const canvas = document.getElementById('signalChart');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0,0,W,H);
+
+    if (data.length < 2) {
+      console.warn('Недостаточно данных');
+      return;
+    }
+
+    // Масштаб времени и значений
+    const times = data.map(p=>p.time.getTime());
+    const tMin = Math.min(...times), tMax = Math.max(...times);
+    // соберём все значения по всем параметрам
+    const allVals = [];
+    data.forEach(p=>{
+      Object.values(p.vals).forEach(v=>{ if (v!==null) allVals.push(v); });
+    });
+    const vMin = Math.min(...allVals), vMax = Math.max(...allVals);
+
+    // Отступы
+    const m = {left:60, right:20, top:20, bottom:40};
+    const plotW = W - m.left - m.right;
+    const plotH = H - m.top - m.bottom;
+
+    // Шкалы
+    const xS = t => m.left + (t - tMin)/(tMax-tMin)*plotW;
+    const yS = v => m.top + plotH - (v - vMin)/(vMax-vMin)*plotH;
+
+    // Оси
+    ctx.strokeStyle='#000'; ctx.beginPath();
+    ctx.moveTo(m.left,m.top); ctx.lineTo(m.left,m.top+plotH);
+    ctx.moveTo(m.left,m.top+plotH); ctx.lineTo(m.left+plotW,m.top+plotH);
+    ctx.stroke();
+
+    // Подписи Y
+    ctx.fillStyle='#000'; ctx.textAlign='right';
+    for(let i=0;i<=5;i++){
+      const v=vMin+(vMax-vMin)*(i/5), y=yS(v);
+      ctx.fillText(v.toFixed(0),m.left-5,y+3);
+      ctx.beginPath(); ctx.moveTo(m.left-3,y); ctx.lineTo(m.left,y); ctx.stroke();
+    }
+
+    // Подписи X
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    for(let i=0;i<=5;i++){
+      const t=tMin+(tMax-tMin)*(i/5), x=xS(t);
+      const dt=new Date(t);
+      const label=dt.toTimeString().substr(0,5);
+      ctx.fillText(label,x,m.top+plotH+5);
+      ctx.beginPath(); ctx.moveTo(x,m.top+plotH); ctx.lineTo(x,m.top+plotH+3); ctx.stroke();
+    }
+
+    // Рисуем кривые для каждого параметра
+    Object.keys(COLORS).forEach(key => {
+      ctx.strokeStyle = COLORS[key];
+      ctx.beginPath();
+      data.forEach((p, idx) => {
+        const v = p.vals[key];
+        if (v===null) return;
+        const x=xS(p.time.getTime()), y=yS(v);
+        idx===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+    });
+
+    // Легенда
+    let lx = m.left + 10, ly = m.top + 5;
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    Object.entries(COLORS).forEach(([key,col])=>{
+      ctx.fillStyle=col;
+      ctx.fillRect(lx,ly-6,12,12);
+      ctx.fillStyle='#000';
+      ctx.fillText(key, lx+18, ly);
+      ly += 18;
+    });
+    console.groupEnd();
+  }
+
+  // Инициация
+  document.addEventListener('DOMContentLoaded', ()=>{
+    console.group('Page init');
+    loadAndDraw();
+    setInterval(loadAndDraw, 5000);
+    console.groupEnd();
+  });
+  </script>
+</body>
+</html>
+3. style.css
+css
+Копировать код
+body {
+  font-family: Arial, sans-serif;
+  margin: 20px;
+}
+h1, h2 {
+  margin-bottom: 10px;
+}
+#status {
+  margin-bottom: 12px;
+  font-style: italic;
+}
+#logTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+#logTable th, #logTable td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+}
+#logTable thead {
+  background: #f0f0f0;
+}
+#logTable tbody tr:nth-child(even) {
+  background: #fafafa;
+}
+#signalChart {
+  border: 1px solid #999;
+  background: #fff;
+}
+Как это работает
+Парсинг: из каждой строки берем дату и 6 значений (p355, p364, … p393).
+
+Таблица: всё ещё показывает «сырые» строки.
+
+Canvas-график:
+
+Одна система координат (время по X, значение по Y).
+
+Шесть кривых, каждая своим цветом.
+
+Легенда в левом верхнем углу (key соответствует метке, например, p355).
+
+Всё чисто на «ванильном» Canvas API, без внешних библиотек. При каждом обновлении (каждые 5 сек) красным рисуется p355, оранжевым — p364 и т. д.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ChatGPT может допускать ошибки. Проверьте важную информацию. См. настр
 ChatGPT может допускать ошибки. Проверьте важную информацию. См. настройки co
 
 
