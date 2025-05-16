@@ -837,3 +837,192 @@ echo json_encode(['ok' => true]);
 
 
 
+
+
+Новый API-эндпоинт api/get_signal_data.php
+Этот скрипт читает signal_log.txt, парсит каждую строку и возвращает JSON-массив объектов вида
+
+js
+Копировать код
+{ 
+  datetime: "2025-05-15T12:34:56",
+  mgrPos:   12345,
+  burner1:  234,
+  burner2:  345,
+  indicator:456,
+  ingotLen: 567,
+  cutTask:  678
+}
+php
+Копировать код
+<?php
+// api/get_signal_data.php
+
+header('Content-Type: application/json; charset=UTF-8');
+$logFile = __DIR__ . '/../signal_log.txt';
+if (!file_exists($logFile)) {
+    echo json_encode([]);
+    exit;
+}
+
+$lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+$out   = [];
+
+foreach ($lines as $line) {
+    // Формат:
+    // Дата и время: YYYY-MM-DD HH:MM:SS  позиция мгр:VAL, горелка1 привод старт:VAL, горелка2 привод старт:VAL, индикатор фактической длины:VAL, длина слитка при разливке:VAL, задание на порез:VAL
+    if (preg_match('/Дата и время:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+позиция мгр:(\S+),\s*горелка1 привод старт:(\S+),\s*горелка2 привод старт:(\S+),\s*индикатор фактической длины:(\S+),\s*длина слитка при разливке:(\S+),\s*задание на порез:(\S+)/u', $line, $m)) {
+        $out[] = [
+            'datetime'  => str_replace(' ', 'T', $m[1]),
+            'mgrPos'    => (float)$m[2],
+            'burner1'   => (float)$m[3],
+            'burner2'   => (float)$m[4],
+            'indicator' => (float)$m[5],
+            'ingotLen'  => (float)$m[6],
+            'cutTask'   => (float)$m[7],
+        ];
+    }
+}
+
+// возвращаем JSON
+echo json_encode($out, JSON_UNESCAPED_UNICODE);
+2. Страница с графиком chart.php
+php
+Копировать код
+<?php
+// chart.php
+?><!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>График сигналов</title>
+  <link rel="stylesheet" href="chart.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>График параметров МГР1.Позиция и др.</h1>
+  <div class="chart-container">
+    <canvas id="signalChart"></canvas>
+  </div>
+  <script>
+  console.group('Chart Page');
+
+  async function fetchData() {
+    console.log('Запрос в api/get_signal_data.php …');
+    const resp = await fetch('api/get_signal_data.php');
+    console.log('HTTP', resp.status, resp.statusText);
+    const data = await resp.json();
+    console.log('Получены данные:', data);
+    return data;
+  }
+
+  function buildChart(data) {
+    console.log('Строим график из', data.length, 'точек');
+    const ctx = document.getElementById('signalChart').getContext('2d');
+    const labels = data.map(d => d.datetime);
+    const series = {
+      mgrPos:    data.map(d=>d.mgrPos),
+      burner1:   data.map(d=>d.burner1),
+      burner2:   data.map(d=>d.burner2),
+      indicator: data.map(d=>d.indicator),
+      ingotLen:  data.map(d=>d.ingotLen),
+      cutTask:   data.map(d=>d.cutTask),
+    };
+
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label:'Позиция МГР',          data: series.mgrPos,    fill:false },
+          { label:'Горелка1 привод старт',data: series.burner1,   fill:false },
+          { label:'Горелка2 привод старт',data: series.burner2,   fill:false },
+          { label:'Индикатор длины',      data: series.indicator, fill:false },
+          { label:'Длина слитка',         data: series.ingotLen,  fill:false },
+          { label:'Задание на порез',     data: series.cutTask,   fill:false },
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode:'index', intersect:false },
+        stacked: false,
+        plugins: {
+          title: { display:true, text:'Параметры по времени' },
+          legend: { position:'bottom' }
+        },
+        scales: {
+          x: {
+            type:'time',
+            time: {
+              parser:'yyyy-MM-dd\'T\'HH:mm:ss',
+              tooltipFormat:'dd.MM.yyyy HH:mm:ss',
+              unit:'minute',
+              displayFormats:{ minute:'HH:mm' }
+            },
+            title: { display:true, text:'Время' }
+          },
+          y: {
+            title: { display:true, text:'Значение' }
+          }
+        }
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const data = await fetchData();
+    buildChart(data);
+    console.groupEnd();
+  });
+  </script>
+</body>
+</html>
+3. Стили для страницы графика chart.css
+css
+Копировать код
+body {
+  font-family: Arial, sans-serif;
+  margin: 20px;
+}
+h1 {
+  text-align: center;
+  margin-bottom: 16px;
+}
+.chart-container {
+  position: relative;
+  width: 90%;
+  max-width: 1000px;
+  height: 500px;
+  margin: 0 auto;
+}
+Как это работает
+get_signal_data.php собирает из signal_log.txt структурированные данные.
+
+chart.php загружает Chart.js, делает AJAX в get_signal_data.php, получает массив объектов, и строит многосерийный линейный график:
+
+по оси X — время (datetime),
+
+по оси Y — значения каждого параметра.
+
+chart.css задаёт контейнер нужного размера и центрирует его.
+
+Теперь у вас в проекте есть вторая страница (chart.php), на которой в реальном времени (при перезагрузке) отображается график по всем вашим сигналам.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ChatGPT может допускать ошибки. Проверьте важную информацию. См. настройк
+
+
