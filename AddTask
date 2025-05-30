@@ -280,3 +280,115 @@ document.getElementById('filterTasksBtn')
 
 
 ChatGPT может допус
+
+/* Модалка и её содержимое */
+.modal#addTaskModal {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5000;
+}
+
+.modal-content#addTaskContent {
+  background: #fff;
+  padding: 20px;
+  border-radius: 6px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;       /* ограничиваем высоту модалки */
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* Кнопка закрытия */
+.modal-close#closeAddTaskModal {
+  position: absolute;
+  top: 10px; right: 14px;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+/* Форма фильтра сверху */
+#addTaskContent label {
+  display: block;
+  margin-bottom: 12px;
+}
+
+/* Контейнер для таблицы */
+#availableTasksTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#availableTasksTable thead {
+  background: #f0f0f0;
+}
+
+/* Делаем thead фиксированным, tbody — прокручиваемым */
+#availableTasksTable thead,
+#availableTasksTable tbody {
+  display: block;
+}
+
+#availableTasksTable thead tr {
+  display: table;
+  table-layout: fixed;
+  width: 100%;
+}
+
+#availableTasksTable tbody {
+  display: block;
+  height: 50vh;             /* или любая другая высота, например 300px */
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Ячейки таблицы */
+#availableTasksTable th,
+#availableTasksTable td {
+  padding: 8px;
+  border: 1px solid #ccc;
+  text-align: left;
+  /* фиксированная ширина столбцов можно задать здесь */
+}
+
+/* Для одинаковой ширины столбцов */
+#availableTasksTable th:nth-child(1),
+#availableTasksTable td:nth-child(1) { width: 15%; }
+#availableTasksTable th:nth-child(2),
+#availableTasksTable td:nth-child(2) { width: 20%; }
+#availableTasksTable th:nth-child(3),
+#availableTasksTable td:nth-child(3) { width: 15%; }
+#availableTasksTable th:nth-child(4),
+#availableTasksTable td:nth-child(4) { width: 30%; }
+#availableTasksTable th:nth-child(5),
+#availableTasksTable td:nth-child(5) { width: 20%; }
+
+/* Полосы прокрутки в WebKit */
+#availableTasksTable tbody::-webkit-scrollbar {
+  width: 8px;
+}
+#availableTasksTable tbody::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.2);
+  border-radius: 4px;
+}
+
+/* Зебра */
+#availableTasksTable tbody tr:nth-child(even) {
+  background: #fafafa;
+}
+
+/* Кнопка «Выбрать» */
+.selectBtn {
+  padding: 4px 8px;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+
